@@ -1,0 +1,21 @@
+{
+  "name": "node",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "leap": "node osc-websockets-bridge.js",
+    "debug": "node --inspect-brk osc-websockets-bridge.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.16.2",
+    "keypress": "^0.2.1",
+    "leapjs": "^0.6.4",
+    "minimist": "^1.2.0",
+    "osc": "^2.2.0",
+    "ws": "^4.0.0"
+  }
+}
