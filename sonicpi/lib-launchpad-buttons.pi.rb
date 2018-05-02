@@ -1,10 +1,65 @@
+# Defines:
+#     @grid[ PAGES=1 ][ ROWS=8 ][ COLS=8 ]
+#        - cell values are 0 or 1
+#
+#      @buttons[ 64 ]
+#        - values are true/false, no row/col subindexes
+#
+#
+#      beat_marker(current_beat, num_beats=8)
+#        - activate marker light (top row circular buttons) at current beat
+#
+# TODO:
+#
+#  - instantaneous hold value state for all buttons
+#  - define callbacks for specific buttons (i.e circular control buttons)
+#  - set range of push states (and colours) for all rows/buttons?
+#
+# see /build/sonicpi/sonic-pi-launchpad.pi.rb for most code
+
 use_midi_defaults channel: 1, port: "launchpad_mini"
 @held = {}
 PAGES = 1
+CC_START = 104   # start of top row of circular buttons
 
+def num_to_lp(n)
+  quot, rem = n.divmod 8
+  quot*16 + rem
+end
+
+# play 50
+@clr = {
+  green: 56,
+  yellow: 127,
+  red: 7,
+  orange: 83,
+  wgreen: 105,
+  wyellow: 102,
+  wred: 75,
+  worange: 107,
+}
+def clr(val); @clr.fetch(val); end
+
+# reset board
+# midi_raw 176, 0, 0, channel: 1, port: "launchpad_mini"
+
+
+def beat_marker(beat, beats=8)
+  last = (beat == 0) ? beats-1 : beat-1
+  midi_cc CC_START + last, value: 0, port: "launchpad_mini"
+  midi_cc CC_START + beat, value: 1, port: "launchpad_mini"
+end
 
 if defined?(@page).nil?
   @page = 0
+end
+
+@off_check = nil
+def button_off_check(grid, &block)
+  return unless block_given?
+  cl "check!", &block
+  # @off_check = block
+  # cl @off_check.to_s
 end
 
 # def on_buttons
@@ -20,6 +75,7 @@ def send_grid(g)
     end
   end
 end
+
 def clear_grid
   puts "CLEAR"
 
@@ -35,25 +91,35 @@ def clear_grid
     end
   end
 end
+
+
 def grid_print
   @grid.each_with_index do |x|
     puts x
   end
 end
 
+
+class Seq
+  attr_accessor :grid, :beat
+
+  def initialise(cols, rows, pages=PAGES)
+    @grid = Array.new(pages){    Array.new(rows){ Array.new(cols){0} }    }
+  end
+end
+
+
+
 if defined?(@grid).nil?
   # first time, init grid
   # @grid = Array.new(8){ Array.new(8){0} }
-  @grid = Array.new(4){ Array.new(8){ Array.new(8){0} } }
+  @grid = Array.new(PAGES){    Array.new(8){ Array.new(8){0} }    }
   clear_grid
-
   @buttons = Array.new(64, false)
 else
   # send existing grid
   send_grid(@grid[@page])
 end
-
-
 
 
 def cell_update(page, row, col, note)
@@ -73,10 +139,12 @@ def cell_update(page, row, col, note)
 
   elsif @grid[page][row][col] == half
     @grid[page][row][col] = 0
+    @buttons[ index ] = false
   else
     @grid[page][row][col] = 1
     @buttons[ index ] = true
   end
+
   midi_note_on note, vel_f: @grid[page][row][col]
 end
 

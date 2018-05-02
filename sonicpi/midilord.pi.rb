@@ -2,8 +2,6 @@
 # stereo SEND TO 3 & 4 IS ACTIVE
 
 # TODO:
-# Where are spread beats happening?
-# Accents not matching up with buttons? tick/look mod issue?
 # Stereo panning (jumping) - param to set ticks before jump to other channel
 # button lights - default values (spread), accent highlights button, pressing off goes back to default values
 # (pass in to grid code? or use constructor)
@@ -27,7 +25,6 @@
 # load a gem
 require_relative '/Users/textchimp/.rvm/gems/ruby-2.4.1/gems/colorize-0.8.1/lib/colorize'
 
-
 run_file '/scratch/midieval-weapons/sonicpi/lib-launchpad-buttons.pi.rb'
 sleep 0.5
 
@@ -38,31 +35,30 @@ midi_all_notes_off()
 
 SPREAD_MAX = 16
 DRUM = true
+HYDRO = "/Users/textchimp/Documents/hydrogen/drumkits"
 KITS = [
   "/samples/Percussion/",
   "/samples/Grand Piano/",
   "/samples/“Piano/",
   "/samples/Harp/",
-  "/Users/textchimp/Documents/hydrogen/drumkits/3355606kit",
-  "/Users/textchimp/Documents/hydrogen/drumkits/Audiophob",
-  "/Users/textchimp/Documents/hydrogen/drumkits/BJA_Pacific",
-  "/Users/textchimp/Documents/hydrogen/drumkits/BigMono",
-  "/Users/textchimp/Documents/hydrogen/drumkits/Boss DR-110", #[4]
-  "/Users/textchimp/Documents/hydrogen/drumkits/Classic-626",
-  "/Users/textchimp/Documents/hydrogen/drumkits/ColomboAcousticDrumkit",
-  "/Users/textchimp/Documents/hydrogen/drumkits/ErnysPercussion",
-  "/Users/textchimp/Documents/hydrogen/drumkits/Flac_GSCW-1", #[8]
-  "/Users/textchimp/Documents/hydrogen/drumkits/Flac_GSCW-2",
-  "/Users/textchimp/Documents/hydrogen/drumkits/Gimme A Hand 1.0",
-  "/Users/textchimp/Documents/hydrogen/drumkits/K-27_Trash_Kit",
-  "/Users/textchimp/Documents/hydrogen/drumkits/Millo_MultiLayered3", #[12]
-  "/Users/textchimp/Documents/hydrogen/drumkits/TR808909",
-  "/Users/textchimp/Documents/hydrogen/drumkits/YamahaVintageKit",
-  "/Users/textchimp/Documents/hydrogen/drumkits/circAfrique v4"
+  HYDRO+"/3355606kit",
+  HYDRO+"/Audiophob",
+  HYDRO+"/BJA_Pacific",
+  HYDRO+"/BigMono",
+  HYDRO+"/Boss DR-110", #[4]
+  HYDRO+"/Classic-626",
+  HYDRO+"/ColomboAcousticDrumkit",
+  HYDRO+"/ErnysPercussion",
+  HYDRO+"/Flac_GSCW-1", #[8]
+  HYDRO+"/Flac_GSCW-2",
+  HYDRO+"/Gimme A Hand 1.0",
+  HYDRO+"/K-27_Trash_Kit",
+  HYDRO+"/Millo_MultiLayered3", #[12]
+  HYDRO+"/TR808909",
+  HYDRO+"/YamahaVintageKit",
+  HYDRO+"/circAfrique v4"
 ]
 KITCOUNT = KITS.length
-
-
 
 # TODO: move to launchkey lib
 CC = "/midi/launchkey_mk2_49_launchkey_midi/*/*/control_change"
@@ -76,6 +72,8 @@ cl @grid
 
 g = @grid[0]  # use first page only
 
+
+
 unless defined? @mstate
   @mstate = {}
   @mstate[S1] = 1.0 # lpf
@@ -86,18 +84,19 @@ unless defined? @mstate
   @mstate[S9] = 0.4 # bpm
 
   @mstate[K1] = 0.5
-  @mstate[K2] = 1.0
+  @mstate[K2] = 0.4
   @mstate[K3] = 0.94
   @mstate[K4] = 0.0
 
   @mstate[K5] = 0.5  # sample bank
 
-  @mstate[K6] = 0.0
+  @mstate[K6] = 1.0  # stereo spread
   @mstate[K7] = 0.5
   @mstate[K8] = 0.5
 end
 
 
+@mstate[S2] = 0.0
 @mstate[S8] = 0.5 # rate 0-2
 @mstate[K8] = 0.5
 
@@ -113,19 +112,20 @@ def m(n, default:0.5, min:0.0, max:1.0)
 end
 
 ####################################################################################
-@mstate[K2] = 0.2
 def spread_buttons
   spread_div = m(K2, min:1, max:SPREAD_MAX).to_i
   spread_nom = m(K1, min:1, max:spread_div).round
   # spread_div = 64
   spreaded = spread(spread_nom, spread_div)
-
+  @global_spread = spreaded
   SPREAD_MAX.times do |n|
+    row, col = n.divmod 8
+    next if @grid[0][row][col] > 0
     if n < spread_div
       if spreaded[n]
         col = 44
       else
-        col = 20
+        col = 121
       end
     else
       col = 0
@@ -151,6 +151,7 @@ end
 
 with_fx :sound_out_stereo, output: 3, amp: 0 do
 
+sample :elec_block
 
 with_fx :lpf, slide: 0.02 do |lpf|
     with_fx :distortion, pre_mix: m(S2) do |dist|
@@ -205,16 +206,42 @@ def spread_highlight( arr, current )
   out.join ' '
 end
 
+def buttons_debug
+  g = @grid[0]
+  # g[0].each do |but|
+  #
+  # end
+  'buttons: ' + g[0].join(' ')
+end
+
 den = 8
 # ds = sample_paths "/samples/Percussion/"
 ds = sample_paths KITS[0]
 
+# pad button off check
+button_off_check @grid do |n|
+  row, col = n.divmod 8
+  if n < spread_div
+    if spreaded[n]
+      col = 44
+    else
+      col = 121
+    end
+  else
+    col = 0
+  end
+end
+exit
+
 live_loop :go do
+
   n = tick
   cue :beat, n
 
   ss = m(K2, min:1, max:SPREAD_MAX).to_i
   sf = m(K1, min:1, max:ss).round
+
+  beat = n % ss
 
   # if n%ss == 0
   #   sample(:elec_wood, amp: 0.2)
@@ -226,8 +253,12 @@ live_loop :go do
   spread_last = [sf, ss]
 
   spread_ring = spread(sf, ss)
-  cl "spread: #{ spread_highlight(spread_ring.to_a, n%ss) }"
 
+  # spread_ring = [true, false, false, false].ring
+
+  cl "spread: #{ spread_highlight(spread_ring.to_a, beat) }"
+
+  cl buttons_debug()
 
   beat_marker( n % ss, ss )
 
@@ -237,7 +268,7 @@ live_loop :go do
 
   # beatflash =
   # cl "\e[H\e[2J"
-  cl "#{sf} / #{ss}, %.1fbpm, [#{look}, mod #{ss} = #{ look%ss }]" % current_bpm
+  cl "#{sf} / #{ss}, %.1fbpm, [#{look}, mod #{ss} = #{ beat }], #{ "beat" if spread_ring[ beat ] }" % current_bpm
 
   # ds = sample_names(:bd)
   d = m(K3, max:ds.length).round
@@ -246,15 +277,6 @@ live_loop :go do
   cl "#{KITS[kit].split('/').last.green}: #{d}/#{d+sampoff}(+#{sampoff})"
   # cl "#{spread(sf, ss).to_a}".light_blue
   cl notes.to_s.red
-
-  # sf.times do |i|
-  #   midi num_to_lp( i ), vel: 7
-  #   cl "i: #{i}: #{num_to_lp( i )}"
-  #   quot, mod = i.divmod sf
-  #   cl "#{i}/#{ss} = #{quot}, #{mod}"
-  #   midi_note_on 1 + quot*16 + mod, clr(:wred)
-  # end‘’
-
 
    # todo: pan look mod, ctrl
 
@@ -274,13 +296,25 @@ live_loop :go do
 
    cl "MIDI[#{modchan}] #{mchan}:#{mnote}, #{mvel} (pan #{mpan})".yellow
 
-   samp =  g[0][look%8] > 0 ? ds[d+sampoff] : ds[d]
+   row, col = beat.divmod 8
+   samp =  g[row][col] > 0 ? ds[d+sampoff] : ds[d]
+   # samp =  g[0][look%8] > 0 ? ds[d+sampoff] : ds[d]
 
-  if spread_ring.look
-    sample samp,
-    pan: pan,
-    rate: m(S8, max:2),
-    amp: seq_or_k8 + amp_add   # this sets an accent for seq-on notes (row 0), K8 for non-accent amp
+   # samp = :elec_tick
+
+  if false && beat == 0
+    sample :elec_plip, pan: [-1, 1].choose, amp: 1# vr(9, 5, 5).look
+  end
+
+  if spread_ring[ beat ]
+
+    sample samp
+
+    # sample(:bd_klub)  #samp
+    # sample samp,
+    # pan: pan,
+    # rate: m(S8, max:2),
+    # amp: seq_or_k8 + amp_add   # this sets an accent for seq-on notes (row 0), K8 for non-accent amp
 
 
     panner(mnote, mpan, mchan)
@@ -306,22 +340,28 @@ end
 
 # cl 123
 
-drums = sample_names :tabla
-# drums = sample_paths "/samples/Percussion/"
-# drums = sample_paths "/Users/textchimp/Documents/hydrogen/drumkits/BJA_Pacific/"
 
 # sequencer buttons, independent of spread
-comment do
+uncomment do
+
+  drums = sample_names :tabla
+
+  drums = [:bd_klub, :drum_bass_soft, :drum_cymbal_closed].ring
+
+  # drums = sample_paths "/samples/Percussion/"
+
   live_loop :drumseq do
     n = sync(:beat).first
-    n %= 8
-    beat_marker(n)
+    ss = m(K2, min:1, max:SPREAD_MAX).to_i # spread second
+    n %= ss
+    # beat_marker(n)
     offset = m(K6, max:20).round
-    g[1..-1].each_with_index do |row, i|
+    g[2..-1].each_with_index do |row, i|
       sample drums[ i + offset ], amp: row[n], on: DRUM
-    end  #if row[n] > 0
-    # sample :elec_flip, pan: [-1,1].choose if g[0][n] > 0
+      cl "drum: #{n}" if row[n] && row[n] > 0 && DRUM
+    end
   end
+
 end
 # loop do
 #   sl = m(K8, max:63).round
@@ -329,7 +369,7 @@ end
 #   sleep 0.006 + m(K1)
 # end
 
-end # krush all
+      end # krush all
     end # echo all
   end # dist all
 end # lpf all
