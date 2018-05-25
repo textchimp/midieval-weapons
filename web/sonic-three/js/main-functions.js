@@ -1,5 +1,47 @@
 var app = app || {};
 
+app.boom = 0;
+
+app.osc = {
+  // DEBUG: true,
+  // DATA: true,
+  data: {},
+  setData: function(path, args){
+    if(this.DEBUG){
+      console.log(path, args);
+      console.log(this.data);
+    }
+    if(this.DATA){
+      this.data[path] = args;
+    }
+  },
+
+  '/klub': function( args ){
+    this.setData('/klub', args);
+    app.randomCube(200, {
+      x: app.controller.xSize,
+      y: app.controller.xSize,
+      z: app.controller.xSize
+    });
+    app.randCube = Math.floor(app.randRange(0, app.cubes.length));
+  },
+
+  '/boom': function( args ){
+    this.setData( '/boom', args )
+    app.boom = 1.0;
+  }
+
+};
+
+
+const o = (path, ind=0) => {
+  if(!app.osc.data || typeof app.osc.data[path] === 'undefined') {
+    return 0;
+  }
+  return app.osc.data[path][ind];
+};
+
+
 app.randRange = function(min, max){
   const range = max - min;
   return min + (Math.random() * range);
@@ -82,6 +124,9 @@ app.createCube = function(x, y, z, size=4, opts={}){
 
   const cube = new THREE.Mesh( cubeGeometry, cubeMaterial );
   cube.position.set( x, y, z );
+
+  cube.userData.original = {x,y,z};
+  cube.userData.sin = Math.random();
 
   cube.boom = 1.0;
 
@@ -215,9 +260,12 @@ app.animateCubes = function(){
   //   }
   // } else
     // app.cubes.forEach( c => c.scale.set(2,1,1) );
-    // for( let i = 0; i < app.cubes.length; i++ ){
-      const c = app.cubes[app.randCube];
-      if ( c && app.boom >= 0.0 ){
+    for( let i = 0; i < app.cubes.length; i++ ){
+      // const c = app.cubes[app.randCube];
+      const c = app.cubes[i];
+      if( c ) {
+
+        if( app.boom >= 0.0 ){
         // if(i == 0) debugger;
         // if(i == 0) app.controller.debug = c.scale.x;//app.controller.debug = [c.scale.x, c.scale.y, c.scale.z];
         // app.controller.debug = app.cubes.length
@@ -225,12 +273,20 @@ app.animateCubes = function(){
           // c.geometry.scale( 1.2,  0.9, 0.9 );
           c.scale.set(app.boom, 1, 1);
           // if(app.boom < 0.1) c.scale.set(0,0,0);
-          c.boom += 0.5;
+          c.boom += 0.01;
 
-        // }
-        c.rotation.z += app.controller.xRot;
-        c.rotation.y += app.controller.xRot;
-      }
+          // }
+          // c.rotation.z += app.controller.xRot;
+          // c.rotation.y += app.controller.xRot;
+        } else {
+          // c.scale.set(1, 1, 1);
+        }
+
+        app.cubes[i].userData.sin += 0.1 * app.controller.bouncingSpeed;
+        app.cubes[i].position.y = app.cubes[i].userData.original.x + (Math.sin(app.cubes[i].userData.sin) * app.controller.rotationSpeed * 100.0);
+
+        app.cubes[i].scale.set( app.controller.velocityScale, app.controller.velocityScale, app.controller.velocityScale );
+
     // app.cubes.forEach(function(c){
     //   c.scale.set(1.1,1,1);
     // });
@@ -240,8 +296,8 @@ app.animateCubes = function(){
         // cube.scale.z * (1.0 - app.boom) + 0.0001,
       // );
     // }//for
-
-    // }
+      }
+    }
 
 };
 //
@@ -325,7 +381,22 @@ app.animateParticles = function(gx, gy, gz){
   app.particleSystem.geometry.verticesNeedUpdate = true;
 };
 
-
+app.keypress = function(ev){
+  console.log('keyCode', ev.keyCode);
+  switch( ev.keyCode ){
+    case 32: // space
+      app.randomCube(200, {
+        x: app.controller.xSize,
+        y: app.controller.xSize,
+        z: app.controller.xSize
+      });
+      break;
+    case 13: // enter
+      app.cubes.forEach( c => app.scene.remove(c) );
+      app.cubes = [];
+      break;
+  }
+}
 
 app.resize = function(){
   app.width = window.innerWidth;

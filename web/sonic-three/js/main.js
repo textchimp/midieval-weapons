@@ -20,7 +20,7 @@ app.init = function(){
   app.gui = new dat.GUI();
   app.gui.add( app.controller, 'rotationSpeed', 0, 1 );
   app.gui.add( app.controller, 'bouncingSpeed', 0, 2 );
-  app.gui.add( app.controller, 'velocityScale', -10, 10 );
+  app.gui.add( app.controller, 'velocityScale', 0, 2 );
   app.gui.add( app.controller, 'xSize', 10, 500 );
   app.gui.add( app.controller, 'boomDec', 0, 0.2 );
   app.gui.add( app.controller, 'xRot', 0, 0.2 );
@@ -84,3 +84,4 @@ app.init = function(){
 
 window.onload = app.init;
 window.addEventListener('resize', app.resize);
+window.addEventListener('keypress', app.keypress || null);
