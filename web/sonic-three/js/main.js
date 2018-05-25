@@ -6,11 +6,11 @@ app.step = 0;
 // app.particleDistribution = 600;
 
 app.controller = {
-  rotationSpeed: 0.02,
-  bouncingSpeed: 0.00,
+  rotationSpeed: 0.1,
+  bouncingSpeed: 0.50,
   velocityScale: 1,
   xSize: 100,
-  boomDec: 0.1,
+  boomDec: 0.01,
   xRot: 0.05,
   debug: "1"
 };
@@ -33,9 +33,9 @@ app.init = function(){
   app.camera = new THREE.PerspectiveCamera(60, app.width/app.height, 0.1, 3000);
 
   // Position our camera in the 3D scene
-  app.camera.position.x = -30;
-  app.camera.position.y = 40;
-  app.camera.position.z = 30;
+  app.camera.position.x = -230;
+  app.camera.position.y = 310;
+  app.camera.position.z = 400;
   // Tell the camera what to look at, in this case the center of the scene: (0, 0, 0)
   app.camera.lookAt( app.scene.position );
 

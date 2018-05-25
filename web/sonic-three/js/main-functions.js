@@ -9,15 +9,15 @@ app.osc = {
   setData: function(path, args){
     if(this.DEBUG){
       console.log(path, args);
-      console.log(this.data);
+      console.log(this.data || null);
     }
     if(this.DATA){
       this.data[path] = args;
     }
   },
 
-  '/klub': function( args ){
-    this.setData('/klub', args);
+  '/boom': function( args ){
+    this.setData('/boom', args);
     app.randomCube(200, {
       x: app.controller.xSize,
       y: app.controller.xSize,
@@ -26,8 +26,8 @@ app.osc = {
     app.randCube = Math.floor(app.randRange(0, app.cubes.length));
   },
 
-  '/boom': function( args ){
-    this.setData( '/boom', args )
+  '/klub': function( args ){
+    this.setData( '/klub', args )
     app.boom = 1.0;
   }
 
@@ -223,8 +223,6 @@ app.animate = function(){
 
   app.animateCubes();
 
-  app.boom -= app.controller.boomDec;
-
   app.step += app.controller.bouncingSpeed; // increment step counter
 
   // app.sphere.position.x = 20 + (10 * Math.cos(app.step));
@@ -260,32 +258,41 @@ app.animateCubes = function(){
   //   }
   // } else
     // app.cubes.forEach( c => c.scale.set(2,1,1) );
+
+    if(app.boom > 0.0 ) app.boom -= app.controller.boomDec;
+
+    // if(Math.random() > 0.5)
+    app.controller.debug = parseFloat(app.boom);
+
     for( let i = 0; i < app.cubes.length; i++ ){
       // const c = app.cubes[app.randCube];
       const c = app.cubes[i];
-      if( c ) {
+      // if( c ) {
 
         if( app.boom >= 0.0 ){
-        // if(i == 0) debugger;
-        // if(i == 0) app.controller.debug = c.scale.x;//app.controller.debug = [c.scale.x, c.scale.y, c.scale.z];
+        // if(i == 0) app.controller.debug = c.scale.x;
         // app.controller.debug = app.cubes.length
         // if(c.scale.x < 2.0){
           // c.geometry.scale( 1.2,  0.9, 0.9 );
-          c.scale.set(app.boom, 1, 1);
+
+          c.scale.set(app.boom, app.boom, app.boom);
+          // c.scale.set(c.boom, c.boom, c.boom);
+
           // if(app.boom < 0.1) c.scale.set(0,0,0);
-          c.boom += 0.01;
+          // c.boom += 0.01;
 
           // }
           // c.rotation.z += app.controller.xRot;
-          // c.rotation.y += app.controller.xRot;
-        } else {
-          // c.scale.set(1, 1, 1);
+          c.rotation.y += app.controller.xRot;
         }
+        // else {
+        //   // c.scale.set(1, 1, 1);
+        // }
 
         app.cubes[i].userData.sin += 0.1 * app.controller.bouncingSpeed;
-        app.cubes[i].position.y = app.cubes[i].userData.original.x + (Math.sin(app.cubes[i].userData.sin) * app.controller.rotationSpeed * 100.0);
+        app.cubes[i].position.y = app.cubes[i].userData.original.y + (Math.sin(app.cubes[i].userData.sin) * app.controller.rotationSpeed * 100.0);
 
-        app.cubes[i].scale.set( app.controller.velocityScale, app.controller.velocityScale, app.controller.velocityScale );
+        // app.cubes[i].scale.set( app.controller.velocityScale, app.controller.velocityScale, 1 );
 
     // app.cubes.forEach(function(c){
     //   c.scale.set(1.1,1,1);
@@ -296,8 +303,10 @@ app.animateCubes = function(){
         // cube.scale.z * (1.0 - app.boom) + 0.0001,
       // );
     // }//for
-      }
-    }
+
+      // } // if(c)
+
+    }//for
 
 };
 //
