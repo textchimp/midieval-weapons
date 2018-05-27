@@ -21,8 +21,12 @@ for(let i =0; i < size; i++){
 
 spread.map( beat => beat ? 'X':'-' ).join(' ');
 
-STERE CHANNEL SELECT:
+DRUM SOUNDS:
+:tabla_te_m  - nice rim click
+:tabla_na    - round thin drum
+:bd_boom     - heavy flat muffled bass
 
+STEREO CHANNEL SELECT:
 
 with_fx :sound_out_stereo, output: 3, amp: 0 do
   # all audio routed to 3+4
@@ -31,14 +35,23 @@ end
 def panner( note, pan[1...127], chan, port="linuxsampler_in_0" )
 #  midi_note_on note , vel, channel: chan
 
-vr(*arr)
-# return a ring of values (for amplitude) / 10
-vr(9, 2, 1)
-#=> (ring 0.9 0.2, 0.1)
+```
+vr(*arr)      # return a ring of values (for amplitude) / 10
+vr(9, 2, 1)   # => (ring 0.9 0.2, 0.1)
 
 def map_range (v, a, b, y, z)
 
 posc(n, chan, vel: note_vel,  dur: d)
+
+# RECEIVE OSC FROM BROWSER:
+live_loop :osc do
+  type, val = sync "/osc/controls"
+  case type
+  when 'bpm' then @bpm = val
+  when 'scale' then @scl = val; cl "scale:", scalen(val)
+  end
+end
+
 
 s =  load_samples "/scratch/watts/"
 sample s[note], pan: rrand(-1, 1)
@@ -46,15 +59,26 @@ sleep sample_duration(s[note])
 
 tablas = sample_names( :tabla )
 sample tablas.choose
+
+drums = load_samples "/Users/textchimp/Documents/hydrogen/drumkits/BigMono/"
+# 128:rimshot, 172: lite hihat,
+sample drums[128]
+
 ---
 
 sample s num_slices: , slice:
 onset: pick
 
+
+
+
+
 DENSE SUBDIVISION:
 
-density 3 do
-  # 3x parent time
+in_thread do
+  density 3 do
+    # 3x parent time
+  end
 end
 
 octs(:c3, 4)
@@ -78,6 +102,7 @@ glass = [
   # :Bb4, :G4, :C5, :Eb5
   :Bb4, :G4, :C5, :Eb5  #:r, :r
 ]
+```
 
 SYNTHS:
 
