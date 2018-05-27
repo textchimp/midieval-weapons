@@ -12,6 +12,8 @@ var oscPort = new osc.WebSocketPort({
 });
 oscPort.open();
 
+app.oscPort = oscPort;
+
 // oscPort.on("connect/ready", function (msg) {  });
 
 oscPort.on("message", function (msg) {

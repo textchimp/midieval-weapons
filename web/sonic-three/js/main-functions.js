@@ -6,10 +6,10 @@ app.osc = {
   // DEBUG: true,
   // DATA: true,
   data: {},
-  setData: function(path, args){
-    if(this.DEBUG){
+  setData: function(path, args, force=false){
+    if(this.DEBUG || force){
       console.log(path, args);
-      console.log(this.data || null);
+      this.data && console.log(this.data);
     }
     if(this.DATA){
       this.data[path] = args;
@@ -18,18 +18,24 @@ app.osc = {
 
   '/boom': function( args ){
     this.setData('/boom', args);
-    app.randomCube(200, {
-      x: app.controller.xSize,
-      y: app.controller.xSize,
-      z: app.controller.xSize
-    });
+    // app.randomCube(200, {
+    //   x: app.controller.xSize,
+    //   y: app.controller.xSize,
+    //   z: app.controller.xSize
+    // });
     app.randCube = Math.floor(app.randRange(0, app.cubes.length));
+    app.cubes[app.randCube].visible = true;
   },
 
   '/klub': function( args ){
-    this.setData( '/klub', args )
+    this.setData( '/klub', args );
     app.boom = 1.0;
-  }
+  },
+
+  '/log': function( args ){
+    this.setData( '/log', args );
+    app.controller.d2 = args.length > 1 ? args.join(', ') : args[0];
+  },
 
 };
 
@@ -56,6 +62,9 @@ app.randomCube = function( range=100, opts={} ){
     opts
   );
   cube.boom = 1.0;
+  if(opts.hide){
+    cube.visible = false;
+  }
   app.cubes.push( cube );
   app.scene.add( cube );
   // console.log('cube', cube);
@@ -196,6 +205,8 @@ app.createLineFromSpline = function( spline ){
 
 app.animate = function(){
 
+  if(app.controller.paused) return;
+
   // app.cameraPosIndex++;
   // if( app.cameraPosIndex > 10000){
   //   app.cameraPosIndex = 0;     // start again at the beginning
@@ -223,6 +234,10 @@ app.animate = function(){
 
   app.animateCubes();
 
+  if(app.controller.cameraRot > 0){
+    app.animateCamera();
+  }
+
   app.step += app.controller.bouncingSpeed; // increment step counter
 
   // app.sphere.position.x = 20 + (10 * Math.cos(app.step));
@@ -241,8 +256,20 @@ app.resetCubesScale = function(){
   // }
 };
 
+app.animateCamera = function(){
+   // https://github.com/josdirksen/threejs-cookbook/blob/master/03-camera/03.08-rotate-camera-around-scene-y-axis.html
+   var x = app.camera.position.x;
+   var z = app.camera.position.z;
+   app.camera.position.x = x * Math.cos(app.controller.cameraRot) + z * Math.sin(app.controller.cameraRot);
+   app.camera.position.z = z * Math.cos(app.controller.cameraRot) - x * Math.sin(app.controller.cameraRot);
+   app.camera.lookAt(app.scene.position);
+};
+
+app.cubeLine = 0;
 
 app.animateCubes = function(){
+
+  app.cubeLine = (app.cubeLine + 1) % 50;
 
   // app.controller.debug = app.boom;
 
@@ -275,24 +302,38 @@ app.animateCubes = function(){
         // if(c.scale.x < 2.0){
           // c.geometry.scale( 1.2,  0.9, 0.9 );
 
-          c.scale.set(app.boom, app.boom, app.boom);
-          // c.scale.set(c.boom, c.boom, c.boom);
+          // if( i > app.cubeLine)
 
+          // HIDE BASED ON FADING TRANSPARENCY
+          c.scale.set(
+            app.boom * app.controller.cubeScale,
+            app.boom * app.controller.cubeScale,
+            app.boom * app.controller.cubeScale
+          );
+          c.material.opacity = app.boom;
+          if(c.material.opacity <= 0 ){
+            c.visible = false;
+          }
+          // c.scale.set(c.boom, c.boom, c.boom);
           // if(app.boom < 0.1) c.scale.set(0,0,0);
           // c.boom += 0.01;
 
-          // }
-          // c.rotation.z += app.controller.xRot;
-          c.rotation.y += app.controller.xRot;
+        } else {
+          c.visible = false;
         }
-        // else {
-        //   // c.scale.set(1, 1, 1);
-        // }
+
+        // Rotation
+        c.rotation.y += app.controller.xRot;
+
+        // Colour cycling
+        const hsl = c.material.color.getHSL();
+        hsl.h =  (hsl.h + 0.001) % 1.0;
+        c.material.color.setHSL(hsl.h, hsl.s, hsl.l);
 
         app.cubes[i].userData.sin += 0.1 * app.controller.bouncingSpeed;
         app.cubes[i].position.y = app.cubes[i].userData.original.y + (Math.sin(app.cubes[i].userData.sin) * app.controller.rotationSpeed * 100.0);
 
-        // app.cubes[i].scale.set( app.controller.velocityScale, app.controller.velocityScale, 1 );
+        // app.cubes[i].scale.set( app.controller.cubeScale, app.controller.cubeScale, 1 );
 
     // app.cubes.forEach(function(c){
     //   c.scale.set(1.1,1,1);
@@ -404,6 +445,20 @@ app.keypress = function(ev){
       app.cubes.forEach( c => app.scene.remove(c) );
       app.cubes = [];
       break;
+    case 112:  // 'p'
+      app.controller.paused = !app.controller.paused;
+      app.controller.paused || app.animate();
+      break;
+    case 115:
+      // osc("/controls", ['play', 1]);
+      app.oscPort.send({
+          address: "/controls",
+          args: [
+            {type: "s", value: 'play'},
+            {type: "i", value: 1},
+          ]
+        });
+    break;
   }
 }
 

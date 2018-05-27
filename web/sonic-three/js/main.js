@@ -5,26 +5,69 @@ app.step = 0;
 // app.numParticles = 100000;
 // app.particleDistribution = 600;
 
+app.NUM_CUBES = 100;
+
 app.controller = {
   rotationSpeed: 0.1,
   bouncingSpeed: 0.50,
-  velocityScale: 1,
+  cubeScale: 1,
   xSize: 100,
   boomDec: 0.01,
   xRot: 0.05,
-  debug: "1"
+  cameraRot: 0.005,
+  debug: "1",
+  d2: "d2",
+  sliceWidth: 0.5,
+  sliceProb: 1.0,
+  slicePhase: 0.25,
+  paused: false,
+  lightColour: { h:1, s:1, v:1 },
+
 };
 
 app.init = function(){
 
   app.gui = new dat.GUI();
+  app.gui.addColor( app.controller, 'lightColour').onChange( val => {
+    app.ambient.color.setHSL(val.h, val.s, val.v);
+  });
   app.gui.add( app.controller, 'rotationSpeed', 0, 1 );
   app.gui.add( app.controller, 'bouncingSpeed', 0, 2 );
-  app.gui.add( app.controller, 'velocityScale', 0, 2 );
+  app.gui.add( app.controller, 'cubeScale', 0, 2 );
   app.gui.add( app.controller, 'xSize', 10, 500 );
   app.gui.add( app.controller, 'boomDec', 0, 0.2 );
   app.gui.add( app.controller, 'xRot', 0, 0.2 );
+  app.gui.add( app.controller, 'cameraRot', 0, 0.1 );
   app.gui.add( app.controller, 'debug').listen();
+  app.gui.add( app.controller, 'd2').listen();
+  app.gui.add( app.controller, 'sliceWidth', 0, 1).onChange( val => {
+    app.oscPort.send({
+        address: "/controls",
+        args: [
+          {type: "s", value: 'scale'},
+          {type: "f", value: val},
+        ]
+      });
+  });
+  app.gui.add( app.controller, 'sliceProb', 0, 1).onChange( val => {
+    app.oscPort.send({
+        address: "/controls",
+        args: [
+          {type: "s", value: 'sprob'},
+          {type: "f", value: val},
+        ]
+      });
+  });
+  app.gui.add( app.controller, 'slicePhase', 0, 1, 0.05).onChange( val => {
+    app.oscPort.send({
+        address: "/controls",
+        args: [
+          {type: "s", value: 'sphase'},
+          {type: "f", value: val},
+        ]
+      });
+  });
+
 
   app.scene = new THREE.Scene();
 
@@ -41,7 +84,7 @@ app.init = function(){
 
 
   app.renderer = new THREE.WebGLRenderer();
-  app.renderer.setSize( app.width, app.height ); // Set the size of the rendered canvas (full screen for us)
+  app.renderer.setSize( app.width, app.height );
   // app.renderer.setClearColor( 0x000000 ); // background colour
 
   app.controls = new THREE.OrbitControls( app.camera, app.renderer.domElement );
@@ -57,17 +100,15 @@ app.init = function(){
   app.ambient = new THREE.AmbientLight( 0xFFFFFF );
   app.scene.add( app.ambient );
 
-  // app.plane = app.createPlane();
-  // app.scene.add( app.plane );
-
   app.cubes = [];
-  for( let i = 0; i < 1; i++ ){
-    let x = Math.random() * 100 - 50;
-    let y = Math.random() * 100 - 50;
-    let z = Math.random() * 100 - 50;
-    let cube = app.createCube( x, y, z );
-    app.cubes.push( cube );
-    app.scene.add( cube );
+  for( let i = 0; i < app.NUM_CUBES; i++ ){
+    app.randomCube(200, {
+      x: app.controller.xSize,
+      y: app.controller.xSize,
+      z: app.controller.xSize,
+      hide: true
+    });
+    console.log('kube');
   }
 
   // app.sphere = app.createSphere();
