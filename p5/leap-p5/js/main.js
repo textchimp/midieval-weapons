@@ -18,11 +18,54 @@ var app = app || {};
 //   // },
 //   '/log': function( args ){
 //     this.setData( '/log', args );
-//     app.controller.d2 = args.length > 1 ? args.join(', ') : args[0];
+//     app.controls.d2 = args.length > 1 ? args.join(', ') : args[0];
 //   },
 //
 // };
 
+app.controls = {
+  scale: 1.0,
+  debug: 0,
+  pitch: 0,
+  roll: 0,
+  yaw: 0,
+  grab: 0,
+  pinch: 0,
+  lightColour: { h:1, s:1, v:1 },
+  grabThreshold: 0.5
+};
+
+app.gui = new dat.GUI();
+// app.gui.addColor( app.controls, 'lightColour').onChange( val => {
+//   app.ambient.color.setHSL(val.h, val.s, val.v);
+// });
+app.gui.add( app.controls, 'scale', 0, 1 );
+app.gui.add( app.controls, 'grabThreshold', 0, 1 );
+app.gui.add( app.controls, 'debug', 0, 1 ).listen()
+app.gui.add( app.controls, 'pitch', -0.5, 0.5 ).listen()
+app.gui.add( app.controls, 'roll', -0.5, 0.5 ).listen()
+app.gui.add( app.controls, 'yaw', -0.5, 0.5 ).listen()
+app.gui.add( app.controls, 'grab', 0, 1 ).listen()
+app.gui.add( app.controls, 'pinch', 0, 1 ).listen()
+
+// app.gui.add( app.controls, 'rotationSpeed', 0, 1 );
+// app.gui.add( app.controls, 'bouncingSpeed', 0, 2 );
+// app.gui.add( app.controls, 'cubeScale', 0, 2 );
+// app.gui.add( app.controls, 'xSize', 10, 500 );
+// app.gui.add( app.controls, 'boomDec', 0, 0.2 );
+// app.gui.add( app.controls, 'xRot', 0, 0.2 );
+// app.gui.add( app.controls, 'cameraRot', 0, 0.1 );
+// app.gui.add( app.controls, 'debug').listen();
+// app.gui.add( app.controls, 'd2').listen();
+// app.gui.add( app.controls, 'bpm', 30, 160).onChange( val => {
+//   app.oscPort.send({
+//       address: "/controls",
+//       args: [
+//         {type: "s", value: 'bpm'},
+//         {type: "i", value: val},
+//       ]
+//     });
+// });
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -32,22 +75,45 @@ function setup() {
   // background(0);
   // noStroke();
   // noFill();
-
   // stroke(255);
   // ellipse(windowWidth/2, windowHeight/2, 100, 100);
-
   // noLoop(); // no draw loop, use redraw() to call draw() once
 
 }
 
-function drawPoints( points ) {
+function drawPoints( points, hand ) {
   for( let i = 0; i < 5; i++ ){
-    const path = `/leap/0/${ i }/pos`;
+    const path = `/leap/${ hand }/${ i }/pos`;
     if(path in points){
+
       const [x,y,z] = points[path];
-      const size = (1.0-z) * 500;
-      noStroke();
-      fill(z*255, x*255, y*255); // fill(random(255), random(255), 255);
+      // const size = (1.0-z) * 500;
+
+      // This rules
+      const roll = points[`/leap/${ hand }/roll`];
+      const pitch = points[`/leap/${ hand }/pitch`];
+      const pinch = points[`/leap/${ hand }/pinch`];
+
+      let touch = 1.0;
+
+      if( points[`/leap/${ hand }/${ i }/touch`] ){
+        touch = points[`/leap/${ hand }/${ i }/touch`][1];
+      }
+
+      touch = (touch/2.0 + 0.5);
+      // console.log('touch');
+
+      if( i == 1 ){
+        app.controls.debug = touch;
+      }
+
+      const size = (roll) * 500;
+
+      fill(
+        touch*255,
+        x*255,
+        (1-pinch)*255 // fill(random(255), random(255), 255);
+      );
       ellipse(
         x*windowWidth,
         (1.0-y)*windowHeight,
@@ -67,11 +133,20 @@ function draw() {
     console.log(oscData);
   }
 
-  if( oscData['/leap/0/grab'] < 0.5 ){
+
+  app.controls.pitch = oscData['/leap/0/pitch'];
+  app.controls.roll = oscData['/leap/0/roll'];
+  app.controls.yaw = oscData['/leap/0/yaw'];
+  app.controls.grab = oscData['/leap/0/grab'];
+  app.controls.pinch = oscData['/leap/0/pinch'];
+
+  if( oscData['/leap/0/grab'] < app.controls.grabThreshold ){
     background(0);
   }
 
-  drawPoints(oscData);
+  noStroke();
+  drawPoints(oscData, 0); // right hand
+  drawPoints(oscData, 1); // left hand
 }
 
 // normalised mouse positions, with optional multiplier
