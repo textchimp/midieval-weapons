@@ -1,3 +1,5 @@
+// while true; do node osc-websockets-bridge.js 57121 ; done
+
 var app = app || {};
 
 // app.osc = {
@@ -32,8 +34,24 @@ app.controls = {
   grab: 0,
   pinch: 0,
   lightColour: { h:1, s:1, v:1 },
-  grabThreshold: 0.5
+  grabThreshold: 0.5,
+  particleVelScale: 0.1,
+  particleLifeTick: 0.05,
+  vx: 0, vy: 0, vz: 0,
 };
+
+app.leap = {
+  left:  [{x:0,y:0,z:0}, {x:0,y:0,z:0}, {x:0,y:0,z:0}, {x:0,y:0,z:0}, {x:0,y:0,z:0}],
+  right: [{x:0,y:0,z:0}, {x:0,y:0,z:0}, {x:0,y:0,z:0}, {x:0,y:0,z:0}, {x:0,y:0,z:0}]
+};
+
+// app.particles = {
+//   0: [ [], [], []. [], [] ],  //left
+//   1: [ [], [], []. [], [] ],  //right
+// };
+
+app.particles = [];
+
 
 app.gui = new dat.GUI();
 // app.gui.addColor( app.controls, 'lightColour').onChange( val => {
@@ -47,6 +65,11 @@ app.gui.add( app.controls, 'roll', -0.5, 0.5 ).listen()
 app.gui.add( app.controls, 'yaw', -0.5, 0.5 ).listen()
 app.gui.add( app.controls, 'grab', 0, 1 ).listen()
 app.gui.add( app.controls, 'pinch', 0, 1 ).listen()
+app.gui.add( app.controls, 'vx', -0.5, 0.5 ).listen()
+app.gui.add( app.controls, 'vy', -0.5, 0.5 ).listen()
+app.gui.add( app.controls, 'vz', -0.5, 0.5 ).listen()
+app.gui.add( app.controls, 'particleVelScale', -0.5, 0.5 );
+app.gui.add( app.controls, 'particleLifeTick', 0, 0.1);
 
 // app.gui.add( app.controls, 'rotationSpeed', 0, 1 );
 // app.gui.add( app.controls, 'bouncingSpeed', 0, 2 );
@@ -82,36 +105,40 @@ function setup() {
 }
 
 function drawPoints( points, hand ) {
+  let fingers = app.leap[ hand == 0 ? 'left' : 'right' ];
+  const grab  = points[`/leap/${ hand }/grab`];
+  const roll  = points[`/leap/${ hand }/roll`];
+  const pitch = points[`/leap/${ hand }/pitch`];
+  const pinch = points[`/leap/${ hand }/pinch`];
+
+
   for( let i = 0; i < 5; i++ ){
     const path = `/leap/${ hand }/${ i }/pos`;
     if(path in points){
-
       const [x,y,z] = points[path];
-      // const size = (1.0-z) * 500;
+      const vx = x - fingers[i].x, vy = y - fingers[i].y, vz = z - fingers[i].z;
+      fingers[i].x = x, fingers[i].y = y, fingers[i].z = z; //  { x, y, z }; //,   vx, vy, vz };
 
-      // This rules
-      const roll = points[`/leap/${ hand }/roll`];
-      const pitch = points[`/leap/${ hand }/pitch`];
-      const pinch = points[`/leap/${ hand }/pinch`];
 
       let touch = 1.0;
-
       if( points[`/leap/${ hand }/${ i }/touch`] ){
         touch = points[`/leap/${ hand }/${ i }/touch`][1];
+        touch = (touch/2.0 + 0.5);
       }
-
-      touch = (touch/2.0 + 0.5);
-      // console.log('touch');
 
       if( i == 1 ){
         app.controls.debug = touch;
+        app.controls.vx = vx; app.controls.vy = vy;  app.controls.vz = vz;
       }
 
-      const size = (roll) * 500;
+      // const size = (1.0-z) * 500;
+      // const size = grab * 200;
+      // const size = roll * 300  +  Math.max( Math.abs(vx), Math.abs(vy) )  * 300;
+      const size = Math.max( Math.abs(vx), Math.abs(vy) ) * 1000;
 
       fill(
-        touch*255,
-        x*255,
+        (z)*255,
+        255,
         (1-pinch)*255 // fill(random(255), random(255), 255);
       );
       ellipse(
@@ -119,8 +146,41 @@ function drawPoints( points, hand ) {
         (1.0-y)*windowHeight,
         size,size
       );
+
+      app.particles.push({
+        x, y, z, vx, vy, vz, hand, life: 1.0, index: i,
+        pinch, grab, roll, size
+      });
+
     }
   }
+}
+
+function updateParticles(){
+  let buffer = [];
+  for( let i = 0; i < app.particles.length; i++ ){
+    const p = app.particles[i];
+    p.x += p.vx * app.controls.particleVelScale;
+    p.y += p.vy * app.controls.particleVelScale;
+    p.z += p.vz * app.controls.particleVelScale;
+
+    p.life -= app.controls.particleLifeTick;
+    if(p.life >= 0){
+     buffer.push(p);
+    }
+
+    fill(
+      (p.z)*255,
+      255,
+      (1-p.pinch)*255 // fill(random(255), random(255), 255);
+    );
+    ellipse(
+      p.x*windowWidth,
+      (1.0-p.y)*windowHeight,
+      p.size,p.size
+    );
+  }
+  app.particles = buffer;
 }
 
 function draw() {
@@ -135,9 +195,9 @@ function draw() {
 
 
   app.controls.pitch = oscData['/leap/0/pitch'];
-  app.controls.roll = oscData['/leap/0/roll'];
-  app.controls.yaw = oscData['/leap/0/yaw'];
-  app.controls.grab = oscData['/leap/0/grab'];
+  app.controls.roll  = oscData['/leap/0/roll'];
+  app.controls.yaw   = oscData['/leap/0/yaw'];
+  app.controls.grab  = oscData['/leap/0/grab'];
   app.controls.pinch = oscData['/leap/0/pinch'];
 
   if( oscData['/leap/0/grab'] < app.controls.grabThreshold ){
@@ -147,6 +207,8 @@ function draw() {
   noStroke();
   drawPoints(oscData, 0); // right hand
   drawPoints(oscData, 1); // left hand
+
+  updateParticles();
 }
 
 // normalised mouse positions, with optional multiplier
@@ -162,7 +224,10 @@ function my(max=1.0){
 function keyPressed(e){
   switch(e.keyCode){
     case 13: break;  // enter
-    case 32: break;  // space
+    case 32:
+      app.particles = [];
+      background(0);
+      break;  // space
   }
 }
 
