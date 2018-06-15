@@ -90,8 +90,14 @@ app.gui.add( app.controls, 'particleLifeTick', 0, 0.1);
 //     });
 // });
 
+var s;
+
+// function preload() {
+//   s = loadShader("line.vert","line.frag");
+// }
+
 function setup() {
-  createCanvas(windowWidth, windowHeight);
+  createCanvas(windowWidth, windowHeight); //, WEBGL);
   colorMode(HSB, 255);
   // pixelDensity(1);  // disable Retina density, for per-pixel stuff
   // rectMode(CORNERS);
@@ -164,6 +170,8 @@ function updateParticles(){
     p.y += p.vy * app.controls.particleVelScale;
     p.z += p.vz * app.controls.particleVelScale;
 
+    p.vy += 0.01 * mx();
+
     p.life -= app.controls.particleLifeTick;
     if(p.life >= 0){
      buffer.push(p);
@@ -209,6 +217,8 @@ function draw() {
   drawPoints(oscData, 1); // left hand
 
   updateParticles();
+
+  // shader(s);
 }
 
 // normalised mouse positions, with optional multiplier
