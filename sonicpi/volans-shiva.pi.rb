@@ -1,4 +1,5 @@
 use_midi_defaults port: 'linuxsampler_in_0'
+set_sched_ahead_time! 1
 use_bpm 45
 
 # durations lookup
@@ -15,15 +16,15 @@ use_bpm 45
 @dur['w1/5'] = @dur['q']/5.0
 
 # velocity lookup
-@vel = Hash.new(100)
-@vel['pp']  = 50
-@vel['p']   = 75
+@vel = Hash.new(90)
+@vel['pp']  = 50; @vel['p']   = 75
+@vel['P']   = 50
 @vel['mp']  = 80
-@vel['mid'] = 90
+@vel['a']   = 96
 @vel['mf']  = 100
 @vel['f']   = 110
-@vel['ff']  = 120
-
+@vel['ff']  = 120; @vel['F']   = 120
+@vel['acc'] = 6
 
 def mplay(args  = {})  # **args
   # optional shorter keys
@@ -39,30 +40,74 @@ end
 # hash of notes, indexed by measure number
 @score = {}
 
-def score_parse(s, label=nil)
+def check_set_score_hash_measure(score_hash, chord)
+  return false unless chord =~ /(\d+)\:/
+  measure = $1
+  score_hash[measure] = []
+  measure
+end
+
+def score_parse(s, key=nil)
   # process each chord-or-note
-  @score[label] = {}
+
+  @score[key] = {}   # score hash for the given key
   measure = 0
+  timing_group = nil
+
   s.inject([]) do |acc,chord|
-    if chord =~ /(\d+)\:/
-      measure = $1
-      @score[label][measure] = []
-      next acc  # skip bar numbers at start of lines (use to define measures)
+
+    # check for N: measure numbers
+    if m = check_set_score_hash_measure(@score[key], chord)
+      measure = m
+      next acc
     end
+
+    # check for '[ / ]N' timing change brackets
+    case chord
+    when '['
+      timing_group = []
+      next acc
+    when /\](\d+)/
+      beats = ($1).to_f
+      cl "FOUND END #{beats}"
+      cl timing_group.inspect
+      notes = timing_group.map do |notes|
+        notes.map do |note, dur, vel|
+          cl "note: '#{note.inspect}', dur: '#{dur.inspect}', vel: '#{vel.inspect}', beats: '#{beats.inspect}'"
+          cl "OUT", [note, dur/beats, vel].inspect
+          [note, dur/beats, vel]
+        end
+      end
+      cl "notes:", notes.inspect
+      timing_group = false
+      acc += notes
+      cl "t-acc", acc.inspect
+      next acc
+    end
+
     notes, dur, vel = chord.split('-')
     dur = dur.to_f > 0 ? dur.to_f : @dur[ dur ] # use literal number, otherwise lookup symbol
     vel = vel.to_f > 0 ? vel.to_f : @vel[ vel ]
-    n = split_notes(notes, dur, vel)
-    @score[label][measure] << n
-    acc << n
-  end
+
+    if timing_group
+      timing_group << split_notes(notes, dur, vel)   # TODO: do we actually want += and not <<  ???????
+      acc
+    else
+      n = split_notes(notes, dur, vel)
+      @score[key][measure] << n
+      acc << n
+      cl "acc", acc.inspect
+      acc
+    end
+
+  end # inject
 end
 
 def split_notes(notes, dur, vel)
   # split a chord string like 'a4,c5' into an array of notes with the same duration and velocity
   notes.split(',').inject([]) do |ac, note|
     ac << [
-      note.to_f > 0 ? note.to_f : note.to_sym,
+      note.to_f > 0 ? note.to_f : note.to_sym,  # use literal MIDI note number or SPi symbol
       dur,
       vel
     ]
@@ -79,12 +124,34 @@ def play_score_note(notes, opts = {})
 end
 
 # play a single measure by number
-def play_measure(label, m, opts = {})
-  measure = @score[label][m.to_s]
+def play_measure(key, m, opts = {})
+  measure = @score[key][m.to_s]
   measure.each { |mes| play_score_note(mes, **opts) }
 end
 
-score_left = %w[
+# L1: [ e4-e_ f4-e f4-e_ b4-e e5-s r-s ]5
+# [ b3-e  b3-e b3-e_ d4-e f4-s r-s ]5 ),
+# R1: [ e4-e_ f4-e f4-e_ b4-e e5-s r-s ]5
+# [ b3-e  b3-e b3-e_ d4-e f4-s r-s ]5 ),
+
+score_left =
+%w(
+  [ e4-e_ f4-e f4-e_ b4-e e5-s r-s ]5
+  [ b3-e  b3-e b3-e_ d4-e f4-s r-s ]5
+
+
+2: a4,e5-w-f          a4,e5-s-a r-s
+   a3,d4-w-f          a3,d4-s-a r-s
+
+3: b5,cs6-w-p         r-q
+   r-w                r-q  (r-wq??)
+
+4: a4,e5-w-f          a4,e5-s r-s
+   a3,d4-w            a3,d4-s r-s
+)
+
+# 0:  [ e4,f4-e f4-e f4-e b4-e e5-s r-s ]5
+score_left = %w(
 1:  b3,e4-w2/5 b3,f4-w2/5 b3,f4-w2/5 d4,b4-w2/5 f4,e5-w1/5 r-w1/5
 2:  a3,d4,a4,e5-w-f  a3,d4,a4,e5-s-mf  r-s r-e
 3:  b5,cs6-w-p  r-q
@@ -97,9 +164,10 @@ score_left = %w[
 10: a3,d4-w-p        a3,d4,a4,e5-s-f  r-s r-e
 11: a3,d4,a4,b5-w-p  a3,d4,a4,e5-s-mf r-s r-e
 12: r-w r-q
-]
+)
 
-score_right = %W[
+# 0:  r-w r-w
+score_right = %w[
 1:  a3,d4-w2/5 a3,d4-w2/5 a3,d4-w2/5 c4,f4-w2/5 e4,b4-w1/5 r-w1/5
 2:  d5-w-p r-q
 3:  a3,d4,a4,e5-w-f   a3,d4,a4,e5-s    r-s r-e
