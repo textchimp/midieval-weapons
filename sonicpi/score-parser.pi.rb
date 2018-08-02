@@ -3,7 +3,19 @@
 # group m/f/p notations in brackets
 #  - possibly at start of bar? own token?
 
+DBG = true
 DBG = false
+
+
+
+# # custom logging function
+# def cl(*str, clear:false, file:'lukeh.log')
+#   str = str.join(', ')
+#   File.open(Dir.home + "/.sonic-pi/log/#{file}", "a+") do |f|
+#     f.write str
+#     f.write "\n" unless clear
+#   end
+# end
 
 def dcl(*args)
   cl(*args) if DBG
@@ -13,7 +25,6 @@ def pretty(o)
   JSON.pretty_generate(o)
 end
 
-# if :lookup_tables
   # durations lookup
   @dur = Hash.new(0.25)
   @dur['t'] = 0.03125
@@ -22,6 +33,13 @@ end
   @dur['q'] = 0.25
   @dur['h'] = 0.5
   @dur['w'] = 1
+
+  # @bar['t'] = 32
+  # @bar['s'] = 16
+  # @bar['e'] = 8
+  # @bar['q'] = 4
+  # @bar['h'] = 2
+  # @bar['w'] = 1
 
   # velocity lookup
   @vel = Hash.new(90)
@@ -34,6 +52,36 @@ end
   @vel['ff']  = 120; @vel['F']   = 120
   @vel['acc'] = 6
 # end
+
+def duration_map
+  h = {
+    't' => 0.03125,
+    's' => 0.0625,
+    'e' => 0.125,
+    'q' => 0.25,
+    'h' => 0.5,
+    'w' => 1
+  }
+  h.default = 0.25
+  h
+end
+
+def velocity_map
+  h = {
+    'P'   => 50,
+    'pp'  => 50,
+    'p'   => 75,
+    'mp'  => 80,
+    'a'   => 96,
+    'mf'  => 100,
+    'f'   => 110,
+    'ff'  => 120,
+    'F'   => 120,
+    'acc' => 6
+  }
+  h.default = 90
+  h
+end
 
 def mplay(args  = {})  # **args
   # optional shorter keys
@@ -53,24 +101,37 @@ end
 
 def get_duration( str, legato:false )
 
-  mult = 1.05 #1.1
+  mult = 1.0 #1.1
 
   f = str.to_f
   return f if f > 0
 
+  # handle double-dotted and dotted notes
+  if str.end_with?('..')
+    mult = 1.75
+    str = str[0..-3] # remove from end
+  elsif str.end_with?('.')
+    mult = 1.5
+    str = str[0..-2] # remove from end
+  end
+
+  dur = duration_map[ str ]
+
   if legato
+    mult = 1.05
     # cl "LEGATO: #{  [ (@dur[str] * mult), @dur[str] ].inspect }".red
-    [ (@dur[str] * mult), @dur[str] ]  # return unique duration and sleep time as array
+    [ (dur * mult), dur ]  # return unique duration and sleep time as array
   else
     # cl "NO LEGATO: #{ @dur[str] }"
-    @dur[str]  # return single duration value
+    dur * mult   # return single duration value
   end
 
 end
 
 def generate_tuplet_timings(tuplets, beats, noteval, num_tuplets)
   beats = beats.to_i
-  noteval = @dur[ noteval ]   # beats/noteval is the time signature
+  noteval = @dur[ noteval ] # duration of bar-note
+  bar = 1.0/noteval         # beats/bar is the time signature
   num_tuplets = num_tuplets.to_f
   # cl "FOUND END #{beats} / #{noteval} : #{num_tuplets}"
   # cl "Tuplets INPUT: #{tuplets.inspect}".blue
@@ -79,7 +140,13 @@ def generate_tuplet_timings(tuplets, beats, noteval, num_tuplets)
   # pure trial and error, no idea *why* this is true, just seems to give
   # correct value when multipled by note duration
   # (i.e. mult = 0.8 for 2/4 time, with tuplets of 5)
+
+  # this is wrong - it gives longer note durations for i.e. 4e5 than it does for 4q5
   mult = (beats / num_tuplets) / (beats * noteval)
+
+  # mult = (beats*num_tuplets / noteval) / (beats / bar)
+  # cl "bar: #{bar}, noteval: #{noteval}  mult: #{mult}"
+  # m = 2/0.5 = 0.5 * 5   # (tuplets / beats) * bar's
 
   tuplets.map do |notes|
     notes.map do |n, d, v|
@@ -108,28 +175,49 @@ def check_legato(token)
 end
 
 def check_for_dynamics(token)
-  @vel.fetch(token, nil)  # check if token is a valid key and return timing float, otherwise nil
+  # cl "VEL: #{@vel.inspect}".green
+  velocity_map.fetch(token, nil)  # check if token is a valid key and return timing float, otherwise nil
 end
 
 def get_velocity(vel, loud)
   if vel.to_f > 0
     vel.to_f     # use specified number
-  elsif @vel.has_key?( vel )
-    @vel[ vel ]  # use specified symbol
+  elsif velocity_map.has_key?( vel )
+    velocity_map[ vel ]  # use specified symbol
   elsif loud
     loud         # use dynamic marker given for measure
   else
-    @vel[ :default_vel ]  # user default hash value
+    velocity_map[ :default_vel ]  # user default hash value
   end
 end
 
+def check_tie(token, status)
+  if token.start_with? '('
+    token = token[1..-1]  # trim first character
+    return [token, :start]
+  elsif token.end_with? ')'
+    token = token.chomp ')'
+    return [token, :end]
+  end
+  [token, status]  # pass back original values
+end
 
-def score_parse(s, key=nil)
+def score_parse(s, debug_start:0)
   # process each chord-or-note
   measure = -1
   loudness = nil
   tuplets_from = nil
   hand  = :r
+  # Track tied notes for each hand, i.e. ties[:l][:notes] = [[:a4, :b3], 0.75, 100]
+  # :notes - (first element is array of notes in chord, second element is accumulated timing as single float, third is velocity)
+  # :status - indicates whether a tie group has just started (:start), is mid-progress (:in_progress), or just ended (:end),
+  # based on finding the parentheses in the score
+  # :start_measure records in which measure the tie group started, for ties which span at least two measures
+  ties = {
+    l: { notes:[], status:nil, start_measure:nil },
+    r: { notes:[], status:nil, start_measure:nil }
+  }
+
 
   s.inject( {l: [], r: []} ) do |score_acc, token|
     # cl "start: ", score_acc.inspect
@@ -178,32 +266,80 @@ def score_parse(s, key=nil)
       token = chomped
       leg = true
     end
-    # token = check_legato(token) || token
+
+    # check for parentheses indicating tie groups, and remove from token
+    token, ties[hand][:status] = check_tie( token, ties[hand][:status] )
 
     notes, dur, vel = token.split('-')
-    dur = get_duration(dur, legato: leg)
+    dur = get_duration(dur, legato: leg) #, tie: !!ties[hand][:status])
     # cl "DURATION GOT: #{ dur.inspect }, #{ dur.class }".yellow
-
 
     vel = get_velocity(vel, loudness)
 
-
+    # TODO: break this big cond block down into `score_acc, tuplets, ties = process_notes(hand, measure, tuplets, ties)` method?
     if tuplets_from
+
       # cl "SPLIT: ", split_notes(notes, dur, vel).inspect; # cl "TUP PUSH", tuplets_from.inspect
       tuplets_from << split_notes(notes, dur, vel)
+
+    elsif ties[hand][:status] == :start
+
+      ties[hand][:status] = :in_progress
+      cl "Tie START m(#{hand}, #{measure+1})".green
+      ties[hand][notes] = notes.split(','), [dur, dur], vel # save note starting values for this tie group, including [dur, sleep] times
+      ties[hand][:start_measure] = measure  # store the measure at which the tie began (for those which cross measures)
+
+    elsif ties[hand][:status] == :in_progress
+
+      cl "adding to m(#{hand}, #{measure+1}): tie[#{hand}](#{ties[hand][notes]}): dur #{dur}".green
+      ties[hand][notes][1][0] += dur  unless notes == 'r' # add trailing tied-note duration to running total
+      if measure == ties[hand][:start_measure]
+        ties[hand][notes][1][1] += dur  unless notes == 'r'  # add duration to tie's *sleep* time instead (keep measures in sync)
+      else
+        score_acc[hand][measure] << [[:r, dur, 0]] # add rest to score if not in starting measure (keeps simultaneous measures in sync)
+      end
+
+    elsif ties[hand][:status] == :end
+
+      # cl "Tie END".red
+      # cl "adding to final tie[#{hand}](#{ties[hand][notes]}): dur #{dur}".blue
+      ties[hand][:status] = nil
+
+      # ties[hand][notes][1] += dur  unless notes == 'r'  # add final note duration to running total
+      # score_acc[hand][measure] <<  [[:r, dur, 0]]  unless measure == ties[hand][:start_measure] # add rest if not in starting measure
+
+      # repeated from above block - TODO: combine/fix
+      ties[hand][notes][1][0] += dur  unless notes == 'r' # add trailing tied-note duration to running total
+      if measure == ties[hand][:start_measure]
+        ties[hand][notes][1][1] += dur  unless notes == 'r'  # add duration to tie's *sleep* time instead (keep measures in sync)
+      else
+        score_acc[hand][measure] << [[:r, dur, 0]] # add rest to score if not in starting measure (keeps simultaneous measures in sync)
+      end
+
+
+      score_acc[hand][ ties[hand][:start_measure] ] << split_notes( *ties[hand][notes] )  # add to measure at which the tie started
+      cl "tie-measure(#{hand}, #{measure+1}): #{score_acc[hand][measure].inspect}".red if measure >= debug_start
+
     else
-      # cl "err: hand #{hand} measure #{measure}"
-      # cl "score", score_acc.inspect
-      score_acc[hand][measure] << split_notes(notes, dur, vel)  # standard append of notes
+
+      # standard append of notes
+      score_acc[hand][measure] << split_notes(notes, dur, vel)
+
     end
+
+    cl "FINAL ts:#{ties[hand][:status]}, m(#{hand}, #{measure+1}): #{score_acc[hand][measure].inspect}".blue # if measure >= debug_start
 
     score_acc
   end # inject
-end
+end # def score_parse()
 
 def split_notes(notes, dur, vel)
-  # split a chord string like 'a4,c5' into an array of notes with the same duration and velocity
-  notes.split(',').inject([]) do |ac, note|
+
+  # handle an array of notes (i.e. from tied-group) or a string of comma-separated notes
+  note_list = notes.is_a?(Array) ? notes : notes.split(',')
+
+  # split a potential chord into an array of notes with the same duration and velocity
+  note_list.inject([]) do |ac, note|
     ac << [
       note.to_f > 0 ? note.to_f : note.to_sym,  # use literal MIDI note number or SPi symbol
       dur,
@@ -237,17 +373,24 @@ def play_score_note(notes, opts = {})
   # cl "DUR: #{notes[0][1]}, SLEEP: #{notes[0][1]}"
   # sleep for either specified legato sleep time, or last-note-in-chord's duration time
   sleep zzz || z_candidate
+  zzz || z_candidate  # return time slept
 end
 
 # play a single measure by number, both hands
 def play_score_measure(score, measure_num, opts = {})
 
-  stop unless score[:l][measure_num] && score[:r][measure_num]
-
+  stop unless score[:l][measure_num] && score[:r][measure_num] && (!@stop || !defined?(@stop))
+  cl "=== measure #{measure_num + 1} =========================="
   in_thread do
-    score[:l][measure_num].each { |m| play_score_note(m, **opts) }
+    measure_time_l = 0
+    score[:l][measure_num].each { |m| measure_time_l += play_score_note(m, **opts) }
+    # cl "TOTAL MEASURE TIME(:l, #{measure_num+1}) = #{ measure_time_l }"
   end
   # in_thread do    # NO! only one thread, otherwise 0 time elapses!
-    score[:r][measure_num].each { |m| play_score_note(m, **opts) }
+    measure_time_r = 0
+    score[:r][measure_num].each { |m| measure_time_r += play_score_note(m, **opts) }
+    # cl "TOTAL MEASURE TIME(:r, #{measure_num+1}) = #{ measure_time_r }"
   # end
 end
+
+cl "Loaded score-parser.pi.rb"
