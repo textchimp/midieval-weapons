@@ -2,20 +2,11 @@
 # accents shorter, i.e. dur * 0.95
 # group m/f/p notations in brackets
 #  - possibly at start of bar? own token?
+# currently only supports piano notation, i.e. left & right hands; support other instruments?
 
 DBG = true
 DBG = false
 
-
-
-# # custom logging function
-# def cl(*str, clear:false, file:'lukeh.log')
-#   str = str.join(', ')
-#   File.open(Dir.home + "/.sonic-pi/log/#{file}", "a+") do |f|
-#     f.write str
-#     f.write "\n" unless clear
-#   end
-# end
 
 def dcl(*args)
   cl(*args) if DBG
@@ -202,6 +193,50 @@ def check_tie(token, status)
   [token, status]  # pass back original values
 end
 
+
+
+def process_tied_notes( notes, duration, velocity, measure_num, tie_hand, score_hand )
+
+  if tie_hand[:status] == :start
+    # cl "Tie START m(hand??, #{measure_num+1})".green
+
+    # save note starting values for this tie group, including distinct [duration, sleep] times
+    tie_hand[:notes] = notes.split(','), [duration, duration], velocity
+    # store the measure at which the tie began (for those which cross measures)
+    tie_hand[:start_measure] = measure_num
+    # advance state
+    tie_hand[:status] = :in_progress
+  else
+    # this code runs for both :in_progress and :end tie statuses (i.e. any but :start status)
+
+    # cl "adding to m(hand??, #{measure_num+1}): tie_hand(#{tie_hand[:notes]}): duration #{duration}".green
+
+    # add trailing tied-note duration to running total
+    tie_hand[:notes][1][0] += duration  unless notes == 'r'
+
+    if measure_num == tie_hand[:start_measure]
+      # add duration to tie's *sleep* time instead (keep simultaneous same measures in sync)
+      tie_hand[:notes][1][1] += duration  unless notes == 'r'
+    else
+      # add rest to score if not in starting measure (keeps simultaneous subsequent measures in sync)
+      score_hand[measure_num] << [[:r, duration, 0]]
+    end
+
+    if tie_hand[:status] == :end
+      # just runs at end of tie, i.e. closing ')' - save final tied note duration back to original note in score
+      # cl "Tie END".red, "adding to final tie_hand(#{tie_hand[:notes]}): duration #{duration}".blue
+
+      # add to measure_num at which the tie started
+      score_hand[ tie_hand[:start_measure] ] << split_notes( *tie_hand[:notes] )
+      # reset tie state
+      tie_hand[:status] = nil
+    end
+
+  end
+
+  [score_hand, tie_hand]  # return both
+end
+
 def score_parse(s, debug_start:0)
   # process each chord-or-note
   measure = -1
@@ -271,63 +306,25 @@ def score_parse(s, debug_start:0)
     token, ties[hand][:status] = check_tie( token, ties[hand][:status] )
 
     notes, dur, vel = token.split('-')
-    dur = get_duration(dur, legato: leg) #, tie: !!ties[hand][:status])
+
+    dur = get_duration(dur, legato: leg)
     # cl "DURATION GOT: #{ dur.inspect }, #{ dur.class }".yellow
 
     vel = get_velocity(vel, loudness)
 
-    # TODO: break this big cond block down into `score_acc, tuplets, ties = process_notes(hand, measure, tuplets, ties)` method?
     if tuplets_from
-
-      # cl "SPLIT: ", split_notes(notes, dur, vel).inspect; # cl "TUP PUSH", tuplets_from.inspect
       tuplets_from << split_notes(notes, dur, vel)
-
-    elsif ties[hand][:status] == :start
-
-      ties[hand][:status] = :in_progress
-      cl "Tie START m(#{hand}, #{measure+1})".green
-      ties[hand][notes] = notes.split(','), [dur, dur], vel # save note starting values for this tie group, including [dur, sleep] times
-      ties[hand][:start_measure] = measure  # store the measure at which the tie began (for those which cross measures)
-
-    elsif ties[hand][:status] == :in_progress
-
-      cl "adding to m(#{hand}, #{measure+1}): tie[#{hand}](#{ties[hand][notes]}): dur #{dur}".green
-      ties[hand][notes][1][0] += dur  unless notes == 'r' # add trailing tied-note duration to running total
-      if measure == ties[hand][:start_measure]
-        ties[hand][notes][1][1] += dur  unless notes == 'r'  # add duration to tie's *sleep* time instead (keep measures in sync)
-      else
-        score_acc[hand][measure] << [[:r, dur, 0]] # add rest to score if not in starting measure (keeps simultaneous measures in sync)
-      end
-
-    elsif ties[hand][:status] == :end
-
-      # cl "Tie END".red
-      # cl "adding to final tie[#{hand}](#{ties[hand][notes]}): dur #{dur}".blue
-      ties[hand][:status] = nil
-
-      # ties[hand][notes][1] += dur  unless notes == 'r'  # add final note duration to running total
-      # score_acc[hand][measure] <<  [[:r, dur, 0]]  unless measure == ties[hand][:start_measure] # add rest if not in starting measure
-
-      # repeated from above block - TODO: combine/fix
-      ties[hand][notes][1][0] += dur  unless notes == 'r' # add trailing tied-note duration to running total
-      if measure == ties[hand][:start_measure]
-        ties[hand][notes][1][1] += dur  unless notes == 'r'  # add duration to tie's *sleep* time instead (keep measures in sync)
-      else
-        score_acc[hand][measure] << [[:r, dur, 0]] # add rest to score if not in starting measure (keeps simultaneous measures in sync)
-      end
-
-
-      score_acc[hand][ ties[hand][:start_measure] ] << split_notes( *ties[hand][notes] )  # add to measure at which the tie started
-      cl "tie-measure(#{hand}, #{measure+1}): #{score_acc[hand][measure].inspect}".red if measure >= debug_start
-
+      # cl "SPLIT: ", tuplets_from.last.inspect; # cl "TUP PUSH", tuplets_from.inspect
+    elsif ties[hand][:status]
+      # handle tied notes
+      score_acc[hand], ties[hand] = process_tied_notes( notes, dur, vel, measure, ties[hand], score_acc[hand] )
+      # cl "tie-measure(#{hand}, #{measure_num+1}): #{score[hand][measure_num].inspect}".red #if measure_num >= debug_start
     else
-
-      # standard append of notes
+      # not a tuplet or tie group: i.e. standard append of notes to score
       score_acc[hand][measure] << split_notes(notes, dur, vel)
-
     end
 
-    cl "FINAL ts:#{ties[hand][:status]}, m(#{hand}, #{measure+1}): #{score_acc[hand][measure].inspect}".blue # if measure >= debug_start
+    # cl "FINAL ts:#{ties[hand][:status]}, m(#{hand}, #{measure+1}): #{score_acc[hand][measure].inspect}".blue # if measure >= debug_start
 
     score_acc
   end # inject
