@@ -16,34 +16,6 @@ def pretty(o)
   JSON.pretty_generate(o)
 end
 
-  # durations lookup
-  @dur = Hash.new(0.25)
-  @dur['t'] = 0.03125
-  @dur['s'] = 0.0625
-  @dur['e'] = 0.125
-  @dur['q'] = 0.25
-  @dur['h'] = 0.5
-  @dur['w'] = 1
-
-  # @bar['t'] = 32
-  # @bar['s'] = 16
-  # @bar['e'] = 8
-  # @bar['q'] = 4
-  # @bar['h'] = 2
-  # @bar['w'] = 1
-
-  # velocity lookup
-  @vel = Hash.new(90)
-  @vel['pp']  = 50; @vel['P']   = 50
-  @vel['p']   = 75
-  @vel['mp']  = 80
-  @vel['a']   = 96
-  @vel['mf']  = 100
-  @vel['f']   = 110
-  @vel['ff']  = 120; @vel['F']   = 120
-  @vel['acc'] = 6
-# end
-
 def duration_map
   h = {
     't' => 0.03125,
@@ -110,10 +82,10 @@ def get_duration( str, legato:false )
 
   if legato
     mult = 1.05
-    # cl "LEGATO: #{  [ (@dur[str] * mult), @dur[str] ].inspect }".red
+    # cl "LEGATO: #{  [ (duration_map[str] * mult), duration_map[str] ].inspect }".red
     [ (dur * mult), dur ]  # return unique duration and sleep time as array
   else
-    # cl "NO LEGATO: #{ @dur[str] }"
+    # cl "NO LEGATO: #{ duration_map[str] }"
     dur * mult   # return single duration value
   end
 
@@ -121,7 +93,7 @@ end
 
 def generate_tuplet_timings(tuplets, beats, noteval, num_tuplets)
   beats = beats.to_i
-  noteval = @dur[ noteval ] # duration of bar-note
+  noteval = duration_map[ noteval ] # duration of bar-note
   bar = 1.0/noteval         # beats/bar is the time signature
   num_tuplets = num_tuplets.to_f
   # cl "FOUND END #{beats} / #{noteval} : #{num_tuplets}"
@@ -166,7 +138,6 @@ def check_legato(token)
 end
 
 def check_for_dynamics(token)
-  # cl "VEL: #{@vel.inspect}".green
   velocity_map.fetch(token, nil)  # check if token is a valid key and return timing float, otherwise nil
 end
 
@@ -192,8 +163,6 @@ def check_tie(token, status)
   end
   [token, status]  # pass back original values
 end
-
-
 
 def process_tied_notes( notes, duration, velocity, measure_num, tie_hand, score_hand )
 
