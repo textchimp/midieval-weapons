@@ -1,12 +1,9 @@
 # TODO:
-# - fix dynamics: each marker's effect should last until the next!
-# accents shorter, i.e. dur * 0.95
-# group m/f/p notations in brackets
-#  - possibly at start of bar? own token?
+# accents shorter, i.e. dur * 0.95 - no, if anything longr (?!)
 # currently only supports piano notation, i.e. left & right hands; support other instruments?
 
 DBG = true
-DBG = false
+# DBG = false
 
 def dcl(*args)
   cl(*args) if DBG
@@ -30,17 +27,31 @@ def duration_map
 end
 
 def velocity_map
+  # Logic Pro mapping, from (https://en.wikipedia.org/wiki/Dynamics_(music))
+  # h = {
+  #   'P'   => 33,
+  #   'pp'  => 33,
+  #   'p'   => 49,
+  #   'mp'  => 64,
+  #   'mf'  => 80,
+  #   'f'   => 96,
+  #   'ff'  => 112,
+  #   'F'   => 112,
+  #   'fff' => 126,
+  #   :accent => 8
+  # }
+
   h = {
     'P'   => 50,
     'pp'  => 50,
     'p'   => 75,
     'mp'  => 80,
-    'a'   => 96,
+    # 'a'   => 96,
     'mf'  => 100,
     'f'   => 110,
     'ff'  => 120,
     'F'   => 120,
-    'acc' => 6
+    :accent => 7
   }
   h.default = 90
   h
@@ -144,11 +155,15 @@ end
 def get_velocity(vel, loud)
   if vel.to_f > 0
     vel.to_f     # use specified number
+  elsif vel == 'a'
+    # accent adds a small amount to the marked velocity
+    (loud || velocity_map[:default_vel])  + velocity_map[ :accent ]
   elsif velocity_map.has_key?( vel )
     velocity_map[ vel ]  # use specified symbol
   elsif loud
     loud         # use dynamic marker given for measure
   else
+    # TODO: should never actually reach here because dynamic markers always specified?
     velocity_map[ :default_vel ]  # user default hash value
   end
 end
@@ -396,4 +411,44 @@ def play_score_measure(score, measure_num, opts = {})
   # end
 end
 
-cl "Loaded score-parser.pi.rb"
+def validate_score(score, label:'')
+  l = score[:l]
+  r = score[:r]
+
+  l.each_with_index do |measure_l, i|
+    cl "measure #{label} #{i+1}: #{measure_l.inspect}"
+    measure_r = r[i]
+    measure_duration_l = 0
+    measure_duration_r = 0
+    measure_l.each do |notes|
+      dur = notes[0][1]  # just get the first note (i.e. not all notes in a chord)
+      if dur.is_a?(Array)
+        measure_duration_l += dur[1]
+      else
+        measure_duration_l += dur
+      end
+      # notes.each do |note_value, durations, vel|
+      #   cl "m(#{i}): notes #{note_value.inspect}; dur #{durations.inspect}; vel #{vel.inspect}"
+      # end
+    end
+    measure_r.each do |notes|
+      dur = notes[0][1]  # just get the first note (i.e. not all notes in a chord)
+      if dur.is_a?(Array)
+        measure_duration_r += dur[1]
+      else
+        measure_duration_r += dur
+      end
+      # notes.each do |note_value, durations, vel|
+      #   cl "m(#{i}): notes #{note_value.inspect}; dur #{durations.inspect}; vel #{vel.inspect}"
+      # end
+    end
+    # cl "MEASURE l:#{i+1}: dur #{measure_duration_l}".red
+    # cl "MEASURE r:#{i+1}: dur #{measure_duration_r}".green
+    if measure_duration_r != measure_duration_l
+      cl "MEASURES FOR #{label} #{i+1} mismatched: l=#{measure_duration_l}, r=#{measure_duration_r}".red
+      raise "Measure #{label} #{i+1} not equal"
+    end
+  end
+end
+
+# cl "Loaded score-parser.pi.rb"
