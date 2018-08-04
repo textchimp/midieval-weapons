@@ -1,4 +1,5 @@
 # TODO:
+# - fix dynamics: each marker's effect should last until the next!
 # accents shorter, i.e. dur * 0.95
 # group m/f/p notations in brackets
 #  - possibly at start of bar? own token?
@@ -6,7 +7,6 @@
 
 DBG = true
 DBG = false
-
 
 def dcl(*args)
   cl(*args) if DBG
@@ -209,9 +209,16 @@ end
 def score_parse(s, debug_start:0)
   # process each chord-or-note
   measure = -1
-  loudness = nil
+  # loudness = nil
+  loudness = {
+    l: velocity_map[:default],
+    r: velocity_map[:default]
+  }
   tuplets_from = nil
   hand  = :r
+
+  # state = { l: {everything}, r: {everything} }       ????????????????????
+
   # Track tied notes for each hand, i.e. ties[:l][:notes] = [[:a4, :b3], 0.75, 100]
   # :notes - (first element is array of notes in chord, second element is accumulated timing as single float, third is velocity)
   # :status - indicates whether a tie group has just started (:start), is mid-progress (:in_progress), or just ended (:end),
@@ -230,7 +237,7 @@ def score_parse(s, debug_start:0)
     if check_set_measure(token)
       measure += 1
       hand = :r
-      loudness = nil
+      # loudness = nil
       # cl "RIGHT, #{ measure }"
       score_acc[:r][measure] = []
       next score_acc
@@ -239,31 +246,34 @@ def score_parse(s, debug_start:0)
     # switch from right to left hand (i.e. treble to bass clef) of same measure
     if token == ':'
       hand = :l
-      loudness = nil
+      # loudness = nil
       # cl "LEFT, #{ measure }"
       score_acc[:l][measure] = []
       next score_acc
     end
 
     # set loudness from token anywhere in measure, for rest of measure (unless specifically overwritten)
+    # CORRECTION: the dynamic marker should apply until *the next marker*, not just until end of measure
+    # if loudness[hand] = check_for_dynamics(token, loudness[hand])
     if loud = check_for_dynamics(token)
-      loudness = loud
+      loudness[hand] = loud
       next score_acc
     end
 
-    # check for [ a b c ]1q5 tuplet notation (TODO: neater return signalling from this fn)
+    # check for '[ a b c ]1q5' tuplet notation; falsey return indicates no tuplets, nothing to do
     if t = check_for_tuplets(token, tuplets_from)
-      if t.any? # array of notes returned indicates tuplet group finished; append to score
+      if t.any?
+        # array of notes returned indicates tuplet group has finished, so append calculated tuplet notes to score
         score_acc[hand][measure] += t
-        tuplets_from = nil  # reset to 'not in tuplet group' state
+        tuplets_from = nil  # reset to 'not within a tuplet group' state
       else
-        tuplets_from = [] # empty array indicated new tuplet group, so reset tracking array
+        # empty array indicated new tuplet group, so reset tracking array
+        tuplets_from = []
       end
 
       # cl "t = #{ t.inspect }".light_green
       next score_acc  # skip further process for this token
     end
-    # cl "tuplets_from #{tuplets_from.inspect}"
 
     leg = false
     if chomped = check_legato(token)
@@ -279,9 +289,10 @@ def score_parse(s, debug_start:0)
     dur = get_duration(dur, legato: leg)
     # cl "DURATION GOT: #{ dur.inspect }, #{ dur.class }".yellow
 
-    vel = get_velocity(vel, loudness)
+    vel = get_velocity(vel, loudness[hand])
 
     if tuplets_from
+      # append notes to tuplet list instead of actual score
       tuplets_from << split_notes(notes, dur, vel)
       # cl "SPLIT: ", tuplets_from.last.inspect; # cl "TUP PUSH", tuplets_from.inspect
     elsif ties[hand][:status]
@@ -347,14 +358,40 @@ def play_score_measure(score, measure_num, opts = {})
 
   stop unless score[:l][measure_num] && score[:r][measure_num] && (!@stop || !defined?(@stop))
   cl "=== measure #{measure_num + 1} =========================="
+
+  # if opts[:pan_hands]
+  #   pan_spread = (opts[:pan_hands] * 63).to_i
+  #   pan = { l: 64+pan_spread, r: 64-pan_spread }
+  #   cl pan.inspect
+  #   opts.delete :pan_hands
+  # else
+  #   pan = { l: opts[:pan] || 64, r: opts[:pan] || 64 }
+  #   cl "NO PAN SPREAD, pan=#{opts[:pan]}".red
+  # end
+
+  if opts[:pan]
+    # option pan: [1-127] is passed to midi() and pans both hands to the amount specified
+    pan_l = opts[:pan]
+    pan_r = opts[:pan]
+    opts.delete :pan
+  elsif opts[:pan_hands]
+    # option pan_hands: [0..1] determines how far apart to spread the two piano hands
+    # pan_hands:0 is no panning, equally in L & R channels
+    # pan_hands:1 is full panning, left hand exclusively in left channel, right hand in right
+    pan_spread = (opts[:pan_hands] * 63).to_i
+    pan_l = 64 + pan_spread
+    pan_r = 64 - pan_spread
+    opts.delete :pan_hands
+  end
+
   in_thread do
     measure_time_l = 0
-    score[:l][measure_num].each { |m| measure_time_l += play_score_note(m, **opts) }
+    score[:l][measure_num].each { |m| measure_time_l += play_score_note(m, pan: pan_l, **opts) }
     # cl "TOTAL MEASURE TIME(:l, #{measure_num+1}) = #{ measure_time_l }"
   end
   # in_thread do    # NO! only one thread, otherwise 0 time elapses!
     measure_time_r = 0
-    score[:r][measure_num].each { |m| measure_time_r += play_score_note(m, **opts) }
+    score[:r][measure_num].each { |m| measure_time_r += play_score_note(m, pan: pan_r, **opts) }
     # cl "TOTAL MEASURE TIME(:r, #{measure_num+1}) = #{ measure_time_r }"
   # end
 end
