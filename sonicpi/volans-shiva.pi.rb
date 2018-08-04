@@ -1,8 +1,8 @@
 use_midi_defaults port: 'linuxsampler_in_0'
 set_sched_ahead_time! 0.1
-use_bpm 45
+use_bpm 45 # 45
 
-run_file '/scratch/midieval-weapons/sonicpi/score-parser.pi.rb'
+load '/scratch/midieval-weapons/sonicpi/score-parser.pi.rb'
 clc "START______________________"
 
 load '/scratch/midieval-weapons/sonicpi/volans-shiva-score.pi.rb'
@@ -60,6 +60,11 @@ comment do
   # stop
 end
 
+# Validation:
+# only checks that bass & treble measures have same duration
+# TODO: also check valid note values are entered?
+validate_score( @piano1, label:'p1(L)' )
+validate_score( @piano2, label:'p2(R)' )
 
 # require 'pp'; cl "S", score.pretty_inspect
 # cl 'j', JSON.pretty_generate(new_score[:l])
