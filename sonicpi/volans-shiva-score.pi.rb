@@ -6,9 +6,10 @@ SCORE =
  : ff  [ b3-e  b3-e b3-e_ d4-e f4-s r-s ]2q5
 ),
 # Piano 2 / Right:
+# NOTE: added 'r-t' at start & end to offset piano 2, fits the sound of the recorded piece (reference) better
 %w(
-1: ff [ d4-e  d4-e d4-e_ f4-e b4-s r-s ]2q5
- : ff [ a3-e  a3-e a3-e_ c4-e e4-s r-s ]2q5
+1: ff [ r-t d4-e  d4-e d4-e_ f4-e b4-s r-t ]2q5
+ : ff [ r-t a3-e  a3-e a3-e_ c4-e e4-s r-t ]2q5
 ),
 %w(
 2: f  a4,e5-w          a4,e5-s-a r-s r-e
@@ -290,9 +291,171 @@ SCORE =
 %w{
 36:    r-h r-q             r-e    pp  b4,e5-s r-s
   :    r-h r-q             r-e    pp  a3,d4-s r-s
+},
+%w{
+37:    (cs6,b6-h.       cs6,b6-e)  r-e
+  :    (b4-h.           b4-e)    a3,d4,b4-s-a r-s
+},
+%w{
+37: p  (a4,e5-h.        a4,e5-e) a4,e5-s-a    r-s
+  : p  (a3,d4-h.        a3,d4-e) r-e
+},
+%w{
+38: pp (a5,cs6-h.       a5,cs6-e)  mf  b4,e5-s-a r-s
+  : mp (a3,d4-h.        a3,d4-e)       a3,d4-s-a r-s
+},
+%w{
+38:    r-w
+  :    (bb2,bb3-h.        bb2,bb3-e)   r-e
+},
+%w{
+39: mp (a4,e5-h.        a4,e5-e)   a4,e5-s-a r-s
+  : mp (a3,d4-h.        a3,d4-e)   a3,d4-s-a r-s
+},
+%w{
+39: mp (b5,cs6-h.       b5,cs6-e)     r-e
+  : mp (b4-h.           b4-e)  b4-s   r-s
+},
+%w{
+40: pp (a6-h.           a6-e)  a6-s           r-s
+  : pp r-w
+},
+%w{
+40: p  (b4,e5-h.        b4,e5-e) b4,e5-s-a    r-s
+  : p  (a3,d4-h.        a3,d4-e)       r-e
+},
+%w{
+41: mp (a4,e5-h.        a4,e5-e)   a4,e5-s-a r-s
+  : mp (d4-h.           d4-e)                r-e
+},
+%w{
+41: pp (c4-h.           c4-e)      c4,d4-s-a r-s
+  : p  (bb1,bb2-h.      bb1,bb2-e)           r-e
+},
+%w{
+42:    (b5,cs6-h.       b5,cs6-e)            r-e
+  :    (a4,e5-h.        a4,e5-e)  a4,e5-s-a  r-s
+},
+%w{
+42:    (a3,d4-h.        a3,d4-e)  a3,d4-s-a  r-s
+  :    r-w
+},
+# TODO: diminuendo?!
+%w{
+43: pp [ a4-q_ cs5-q_ b5-q_ gs6-q. r-e ]4q5
+  : p  (a3,d4-h.        a3,d4-e)   a3,d4-s-a r-s
+},
+%w{
+43: pp (g5-h.           g5-e)      g5-s-a    r-s
+  : p  (b4,e5-h.        b4,e5-e)   b4,e5-s-a r-s
+},
+%w{
+44: mp (b4,e5-h        b4,e5-q.)   b4,e5-s-a r-s
+  : mp a3,d4-h..       a3,d4-s-a   r-s
+},
+%w{
+44:    r-w
+  :    r-w
+}, # TODO: dim
+%w{
+45: pp [ a4-q_ cs5-q_ b5-q_ gs6-q._ r-e ]4q5
+  : p  (a3,d4-h       a3,d4-q.)   a3,d4-s-a r-s
+}, # TODO: dim
+%w{
+45: p  (b4,e5-h     b4,e5-q.)     b4,e5-s-a r-s
+  :    d4-q_  a4-q_ e5-q_ cs6-q
+},
+%w{
+46: mp (b4,e5-h        b4,e5-q.)   b4,e5-s-a r-s
+  : mp a3,d4-h..       a3,d4-s-a   r-s
+},
+%w{
+46:    r-w
+  :    r-w
+}, # TODO: dim
+%w{
+47: mf (b4,e6-h        b4,e6-q.)   b4,e6-s-a r-s
+  :    r-w
+},
+%w{
+47: pp (b4,e5-h        b4,e5-q.)   b4,e5-s-a r-s
+  : pp (a3,d4-h        a3,d4-q.)   a3,d4-s-a r-s
+},
+%w{
+48: mp (b4,e5-h        b4,e5-q.)   b4,e5-s-a r-s
+  : mp a3,d4-h..       a3,d4-s-a   r-s
+},
+%w{
+48:    r-w
+  :    r-w
+},
+%w{
+49: p  d5-q_  a5-q_ e6-q_ cs7-q
+  : pp [ a4-q_ cs5-q_ b5-q_ gs6-q r-q ]4q5
+}, # TODO: 'fff' dynamic (using -a accent for now)
+%w{
+49: ff (b4,e5-h-a     b4,e5-q.)  b4,e5-s-a r-s
+  : ff (a3,d4-h-a     a3,d4-q.)  a3,d4-s-a r-s
+},
+%w{
+50:    r-h     r-q  r-e    mp  b4,e5-s-a r-s
+  :    r-h     r-q  r-e    mp  a3,d4-s-a r-s
+},
+%w{
+50: mp (b4,e5-h        b4,e5-q.)   r-e
+  : mp a3,d4-h..                   r-e
+},
+%w{
+51:    (b4,e5-h        b4,e5-q.)   b4,e5-s-a r-s
+  :    a3,d4-h..       a3,d4-s-a   r-s
+},
+%w{
+51: mf (a6-w
+  : p  (bb1,bb2-w
+},
+%w{
+52:    (b4,e5-h        b4,e5-q.)   b4,e5-s-a r-s
+  :    a3,d4-h..       a3,d4-s-a   r-s
+},
+# TODO: actually ties to start of next bar, but a3,d4 also starts there?
+%w{
+52: mf a6-h...)                    r-s
+  : p  bb1,bb2-w)
+},
+%w{
+53: f  e6-h...                     r-s
+  :    r-w
+},
+%w{
+53:    (b4,e5-h        b4,e5-q.)   b4,e5-s-a r-s
+  :    a3,d4-h..       a3,d4-s-a   r-s
+},
+%w{
+54: mp (a4,e5-h        a4,e5-q.)   r-e
+  : mp a3,d4-h..                   r-e
+},
+%w{
+54: mp r-h    r-q.        e5-s-a r-s
+  : mp r-h    r-q.          d4-s r-s
+},
+%w{
+55: mf d5,a5-h...-a                 r-s
+  : pp a3,d4-h..          a3,d4-s-a r-s
+}, #TODO: dim
+%w{
+55: pp (b4,e5-h        b4,e5-q.)   b4,e5-s-a r-s
+  : pp [ a4-q_ cs5-q_ b5-q_ g6-q. r-e ]4q5
+},
+%w{
+56:    r-w
+  :    r-w
+},
+%w{
+56: mp (a4,e5-h        a4,e5-q.)   a4,e5-s-a r-s
+  : mp a3,d4-h..                   a3,d4-s-a r-s
 }
 
-# SCORE = '
+ # SCORE = '
 
 
 # %w{
@@ -300,15 +463,15 @@ SCORE =
 #   :    (a3,d4-h-pp        a3,d4-q.-pp) a3,d4-s r-s
 # }
 # constants are included by load() method
-START = 1
+START = 50
 COUNT = nil
 REPEAT = false #1
 # REPEAT = false #1
 METRO = nil
-PARTS = :both  # :l, :both
+PARTS = :l  # :l, :both
 PARTS  ||= :both
-# use_bpm 40
-
+# use_bpm 30
+DBG = true
 
 # template = '
 # %w(
