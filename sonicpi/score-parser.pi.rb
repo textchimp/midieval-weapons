@@ -1,9 +1,28 @@
 # TODO:
-# accents shorter, i.e. dur * 0.95 - no, if anything longr (?!)
-# currently only supports piano notation, i.e. left & right hands; support other instruments?
+# - accents shorter, i.e. dur * 0.95 - no, if anything longr (?!)
+# - currently only supports piano notation, i.e. left & right hands; support other instruments?
+# - add support for 'hairpins' ie. cresc/dim dynamics
+# - add time signature notation (for error checking? easier tuplets)
 
-DBG = true
-# DBG = false
+# DBG = true
+DBG = false
+
+# MONSTER REGEX TO TEST FOR WELL-FORMED TOKENS:
+# TODO: regex does not validate:
+# - that tuplet square brackets close in the same measure they are opened
+# - that tied-note parentheses are eventually closed (before the next is opened)
+NOTE_DYNAMICS = '(P|pp|p|mp|a|mf|f|ff|F|fff)'  # 'a' => accent
+NOTE_DURATION = '(w|h|q|e|s|t)'
+NOTE_NAME = '( ([a-gA-GrR]{1} [BbSs]? \d{1}) | [Rr] )'  # note name and octave number, or rest
+NOTE_OR_CHORD = "#{NOTE_NAME} (,#{NOTE_NAME})*"
+DOTS = '\.{,3}'
+VALID_TOKENS = Regexp.union([
+  /^ \d* : $/x,  # measure indicator (number is optional - to omit means left hand/bass clef for same measure)
+  /^ #{NOTE_DYNAMICS} $/x,  # dynamics marking
+  /^ ( \[ | ( \] \d+ #{NOTE_DURATION} \d+ ) ) $/x,  # tuplet groupings: opening, and closing with timing values
+  /^ \(? #{NOTE_OR_CHORD} - #{NOTE_DURATION} #{DOTS} ( - #{NOTE_DYNAMICS} )? _? \)? $/x, # note/chord
+])
+
 
 def dcl(*args)
   cl(*args) if DBG
@@ -51,6 +70,7 @@ def velocity_map
     'f'   => 110,
     'ff'  => 120,
     'F'   => 120,
+    # 'fff' => 127 ????????
     :accent => 7
   }
   h.default = 90
@@ -73,15 +93,21 @@ def check_set_measure(token)
   $1 #return measure num
 end
 
-def get_duration( str, legato:false )
+def get_duration( str, legato:false, debug_token:'' )
 
   mult = 1.0 #1.1
+  legato_mult = 1.05
 
   f = str.to_f
   return f if f > 0
 
-  # handle double-dotted and dotted notes
-  if str.end_with?('..')
+  # handle dotted notes
+  if str.end_with?('...')
+    # cl "TRIPLE (token: #{debug_token || '[not given]'})".red
+    # TODO: regex to count dots instead of all these conditions?
+    mult = 1.875   # (1 + 0.5 + 0.25 + 0.125 = 1.875)
+    str = str[0..-4] # remove from end
+  elsif str.end_with?('..')
     mult = 1.75
     str = str[0..-3] # remove from end
   elsif str.end_with?('.')
@@ -92,14 +118,12 @@ def get_duration( str, legato:false )
   dur = duration_map[ str ]
 
   if legato
-    mult = 1.05
     # cl "LEGATO: #{  [ (duration_map[str] * mult), duration_map[str] ].inspect }".red
-    [ (dur * mult), dur ]  # return unique duration and sleep time as array
+    [ (dur * mult * legato_mult), dur * mult ]  # return unique duration and sleep time as array
   else
-    # cl "NO LEGATO: #{ duration_map[str] }"
+    # cl "NO LEGATO: #{ duration_map[str] } (#{str})"
     dur * mult   # return single duration value
   end
-
 end
 
 def generate_tuplet_timings(tuplets, beats, noteval, num_tuplets)
@@ -200,6 +224,8 @@ def process_tied_notes( notes, duration, velocity, measure_num, tie_hand, score_
 
     if measure_num == tie_hand[:start_measure]
       # add duration to tie's *sleep* time instead (keep simultaneous same measures in sync)
+      # (TODO: this will cause a tied note that stays within the same measure to have a 2-element
+      #  array with the same dur & sleep values, i.e. [0.5, 0.5], in which case it should just be a scalar 0.5)
       tie_hand[:notes][1][1] += duration  unless notes == 'r'
     else
       # add rest to score if not in starting measure (keeps simultaneous subsequent measures in sync)
@@ -221,7 +247,7 @@ def process_tied_notes( notes, duration, velocity, measure_num, tie_hand, score_
   [score_hand, tie_hand]  # return both
 end
 
-def score_parse(s, debug_start:0)
+def score_parse(s, debug_start:0, debug_label:'')
   # process each chord-or-note
   measure = -1
   # loudness = nil
@@ -247,6 +273,11 @@ def score_parse(s, debug_start:0)
 
   s.inject( {l: [], r: []} ) do |score_acc, token|
     # cl "start: ", score_acc.inspect
+
+    unless token.match( VALID_TOKENS )
+      cl "BAD TOKEN: #{debug_label} m#{measure+1}:".red + "'#{token}'".yellow
+      raise "BAD TOKEN: #{debug_label} m#{measure+1}: '#{token}'"
+    end
 
     # check for N: measure numbers
     if check_set_measure(token)
@@ -301,8 +332,9 @@ def score_parse(s, debug_start:0)
 
     notes, dur, vel = token.split('-')
 
-    dur = get_duration(dur, legato: leg)
-    # cl "DURATION GOT: #{ dur.inspect }, #{ dur.class }".yellow
+    # cl "DURATION m=#{measure} ('#{token}'): #{ dur.inspect }, leg: #{leg}".yellow if measure==54
+    dur = get_duration(dur, legato: leg, debug_token: token)
+    # cl "DURATION GOT: #{ dur.inspect }, #{ dur.class }".yellow if measure==54
 
     vel = get_velocity(vel, loudness[hand])
 
@@ -416,8 +448,11 @@ def validate_score(score, label:'')
   r = score[:r]
 
   l.each_with_index do |measure_l, i|
-    cl "measure #{label} #{i+1}: #{measure_l.inspect}"
     measure_r = r[i]
+    if defined?( DBG ) && DBG
+      cl "measure #{label} #{i+1}  left: #{measure_l.inspect}"
+      cl "measure #{label} #{i+1} right: #{measure_r.inspect}"
+    end
     measure_duration_l = 0
     measure_duration_r = 0
     measure_l.each do |notes|
@@ -444,7 +479,8 @@ def validate_score(score, label:'')
     end
     # cl "MEASURE l:#{i+1}: dur #{measure_duration_l}".red
     # cl "MEASURE r:#{i+1}: dur #{measure_duration_r}".green
-    if measure_duration_r != measure_duration_l
+    # ignore god damned CPU rounding errors
+    if (measure_duration_r - measure_duration_l).abs > 0.00000000001
       cl "MEASURES FOR #{label} #{i+1} mismatched: l=#{measure_duration_l}, r=#{measure_duration_r}".red
       raise "Measure #{label} #{i+1} not equal"
     end
