@@ -3,7 +3,9 @@
 # - currently only supports piano notation, i.e. left & right hands; support other instruments?
 # - add support for 'hairpins' ie. cresc/dim dynamics
 # - add time signature notation (for error checking? easier tuplets)
-
+# - grace notes! i.e. 'c4-/' (short duration, no addition to duration of measure overall)?
+# - parallel notes (starting at the same time as another note/chord, but with different duration)
+# - 'legato' is actually called a 'slur' (find/replace)
 # DBG = true
 DBG = false
 
@@ -18,6 +20,7 @@ NOTE_OR_CHORD = "#{NOTE_NAME} (,#{NOTE_NAME})*"
 DOTS = '\.{,3}'
 VALID_TOKENS = Regexp.union([
   /^ \d* : $/x,  # measure indicator (number is optional - to omit means left hand/bass clef for same measure)
+  /^ ped $/x,    # pedalling indicator
   /^ #{NOTE_DYNAMICS} $/x,  # dynamics marking
   /^ ( \[ | ( \] \d+ #{NOTE_DURATION} \d+ ) ) $/x,  # tuplet groupings: opening, and closing with timing values
   /^ \(? #{NOTE_OR_CHORD} - #{NOTE_DURATION} #{DOTS} ( - #{NOTE_DYNAMICS} )? _? \)? $/x, # note/chord
@@ -26,6 +29,10 @@ VALID_TOKENS = Regexp.union([
 
 def dcl(*args)
   cl(*args) if DBG
+end
+
+def cls(*args)
+  cl *args, file:'score.pi.log'
 end
 
 def pretty(o)
@@ -270,6 +277,8 @@ def score_parse(s, debug_start:0, debug_label:'')
     r: { notes:[], status:nil, start_measure:nil }
   }
 
+  # keep track of notes played between pedal press - NOPE: this should happen in play_score_measure()
+  pedal_held_notes = []
 
   s.inject( {l: [], r: []} ) do |score_acc, token|
     # cl "start: ", score_acc.inspect
@@ -277,6 +286,11 @@ def score_parse(s, debug_start:0, debug_label:'')
     unless token.match( VALID_TOKENS )
       cl "BAD TOKEN: #{debug_label} m#{measure+1}:".red + "'#{token}'".yellow
       raise "BAD TOKEN: #{debug_label} m#{measure+1}: '#{token}'"
+    end
+
+    if token == 'ped'
+      score_acc[hand][measure] << :pedal
+      next score_acc
     end
 
     # check for N: measure numbers
@@ -376,6 +390,8 @@ end
 def play_score_note(notes, opts = {})
   # cl "NOTES: #{notes.inspect}".red
   opts[:vscale] ||= 1.0
+  ped = opts[:pedal]
+  hand = opts[:hand]
   zzz = nil
   z_candidate = nil
 
@@ -390,6 +406,13 @@ def play_score_note(notes, opts = {})
       z_candidate = n[1]
     end
 
+    if ped && ped[ hand ]
+      cl "PEDAL from inside play_score_note: #{ped.inspect}" #if opts[:hand] = :l
+      ped[ hand ]  << n[0]
+      # cl "P ADD #{n[0]}, #{hand}"
+      dur = 10000  # effectively disable note-off
+    end
+
     dcl "mplay(note:#{n[0]}, sustain:#{n[1]}, velocity:#{n[2]})"
     mplay note:n[0], sustain:dur, velocity:n[2] * opts[:vscale], **opts
   end
@@ -397,11 +420,13 @@ def play_score_note(notes, opts = {})
   # cl "DUR: #{notes[0][1]}, SLEEP: #{notes[0][1]}"
   # sleep for either specified legato sleep time, or last-note-in-chord's duration time
   sleep zzz || z_candidate
-  zzz || z_candidate  # return time slept
 end
 
 # play a single measure by number, both hands
 def play_score_measure(score, measure_num, opts = {})
+
+  # need this accumulator array passed in from calling context, to remember lists of played notes which might stretch across more than one measure
+  pedal_notes = opts[:pedal_notes]
 
   stop unless score[:l][measure_num] && score[:r][measure_num] && (!@stop || !defined?(@stop))
   cl "=== measure #{measure_num + 1} =========================="
@@ -432,14 +457,28 @@ def play_score_measure(score, measure_num, opts = {})
   end
 
   in_thread do
-    measure_time_l = 0
-    score[:l][measure_num].each { |m| measure_time_l += play_score_note(m, pan: pan_l, **opts) }
-    # cl "TOTAL MEASURE TIME(:l, #{measure_num+1}) = #{ measure_time_l }"
+    score[:l][measure_num].each do |m|
+      if m == :pedal
+        # cl "GOT PEDAL (RL m#{measure_num} #{pedal_notes[:l].inspect}".green
+        pedal_notes[:l].uniq.each{ |n| midi_note_off n, **opts } if pedal_notes[:l]
+        pedal_notes[:l] = []
+        next
+      end
+      play_score_note(m, pan: pan_l, hand: :l, pedal: pedal_notes, **opts)
+    end
   end
+
   # in_thread do    # NO! only one thread, otherwise 0 time elapses!
-    measure_time_r = 0
-    score[:r][measure_num].each { |m| measure_time_r += play_score_note(m, pan: pan_r, **opts) }
-    # cl "TOTAL MEASURE TIME(:r, #{measure_num+1}) = #{ measure_time_r }"
+    score[:r][measure_num].each do |m|
+      if m == :pedal
+        # cl "GOT PEDAL (R) m#{measure_num} #{pedal_notes[:r].inspect}".green
+        # midi_all_notes_off channel: opts[:channel]  # (this MUST be in non-thread hand) TODO: causes following notes to be cut short, occasionally!
+        pedal_notes[:r].uniq.each{ |n| midi_note_off n, **opts }  if pedal_notes[:r]
+        pedal_notes[:r] = []
+        next
+      end
+      play_score_note(m, pan: pan_r, hand: :r, pedal: pedal_notes, **opts)
+    end
   # end
 end
 
