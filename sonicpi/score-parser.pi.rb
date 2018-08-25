@@ -6,6 +6,7 @@
 # - grace notes! i.e. 'c4-/' (short duration, no addition to duration of measure overall)?
 # - parallel notes (starting at the same time as another note/chord, but with different duration)
 # - 'legato' is actually called a 'slur' (find/replace)
+# - 'ritardndo' slowing down tempo notation; or other sudden tempo change notation 't10' vs 'tdef/tnorm' )
 # DBG = true
 DBG = false
 
@@ -18,9 +19,11 @@ NOTE_DURATION = '(w|h|q|e|s|t)'
 NOTE_NAME = '( ([a-gA-GrR]{1} [BbSs]? \d{1}) | [Rr] )'  # note name and octave number, or rest
 NOTE_OR_CHORD = "#{NOTE_NAME} (,#{NOTE_NAME})*"
 DOTS = '\.{,3}'
+FLOAT = '(\d*\.)?\d+'
 VALID_TOKENS = Regexp.union([
   /^ \d* : $/x,  # measure indicator (number is optional - to omit means left hand/bass clef for same measure)
   /^ ped $/x,    # pedalling indicator
+  /^ t (#{FLOAT})? $/x, # tempo change
   /^ #{NOTE_DYNAMICS} $/x,  # dynamics marking
   /^ ( \[ | ( \] \d+ #{NOTE_DURATION} \d+ ) ) $/x,  # tuplet groupings: opening, and closing with timing values
   /^ \(? #{NOTE_OR_CHORD} - #{NOTE_DURATION} #{DOTS} ( - #{NOTE_DYNAMICS} )? _? \)? $/x, # note/chord
@@ -77,8 +80,8 @@ def velocity_map
     'f'   => 110,
     'ff'  => 120,
     'F'   => 120,
-    # 'fff' => 127 ????????
-    :accent => 7
+    'fff' => 126,
+    :accent => 9 #7
   }
   h.default = 90
   h
@@ -288,8 +291,20 @@ def score_parse(s, debug_start:0, debug_label:'')
       raise "BAD TOKEN: #{debug_label} m#{measure+1}: '#{token}'"
     end
 
+    # pedalling
     if token == 'ped'
       score_acc[hand][measure] << :pedal
+      next score_acc
+    end
+
+    # tempo change : 't0.5' / 't.5' / 't2', or 't' to revert
+    # NOTE: requires 'BPM' constant to be set for piece
+    # TODO: must be specified for both hands to prevent falling out of sync (FIXME)
+    if token.downcase.start_with? 't'
+      factor = token[1..-1].to_f
+      factor = 1.0 if factor == 0.0  # no tempo value given means revert to default or starting tempo
+      cl "GOT TEMPO TOKEN #{token}: #{factor} (def: #{BPM})".red
+      score_acc[hand][measure] << factor  # this means the indicator for tempo change is just a naked float (TODO: flag it better? in a symbol or?)
       next score_acc
     end
 
@@ -408,6 +423,7 @@ def play_score_note(notes, opts = {})
 
     if ped && ped[ hand ]
       cl "PEDAL from inside play_score_note: #{ped.inspect}" #if opts[:hand] = :l
+      cl "BPM: #{current_bpm}".green
       ped[ hand ]  << n[0]
       # cl "P ADD #{n[0]}, #{hand}"
       dur = 10000  # effectively disable note-off
@@ -463,7 +479,13 @@ def play_score_measure(score, measure_num, opts = {})
         pedal_notes[:l].uniq.each{ |n| midi_note_off n, **opts } if pedal_notes[:l]
         pedal_notes[:l] = []
         next
+      elsif m.is_a? Float
+        use_bpm (BPM * m)  # tempo change
+        cl "BPM L #{current_bpm}".red
+
+        next
       end
+
       play_score_note(m, pan: pan_l, hand: :l, pedal: pedal_notes, **opts)
     end
   end
@@ -476,7 +498,12 @@ def play_score_measure(score, measure_num, opts = {})
         pedal_notes[:r].uniq.each{ |n| midi_note_off n, **opts }  if pedal_notes[:r]
         pedal_notes[:r] = []
         next
+      elsif m.is_a? Float
+        use_bpm (BPM * m)  # tempo change
+        cl "BPM R #{current_bpm}".red
+        next
       end
+
       play_score_note(m, pan: pan_r, hand: :r, pedal: pedal_notes, **opts)
     end
   # end
