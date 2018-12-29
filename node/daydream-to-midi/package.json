@@ -13,6 +13,10 @@
     "easymidi": "^1.0.1",
     "midi": "^0.9.5",
     "minimist": "^1.2.0",
-    "noble": "^1.9.1"
+    "noble": "^1.9.1",
+    "xpc-connection": "sandeepmistry/node-xpc-connection#pull/26/head"
+  },
+  "resolutions": {
+    "xpc-connection": "sandeepmistry/node-xpc-connection#pull/26/head"
   }
 }
