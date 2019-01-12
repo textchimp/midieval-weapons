@@ -82,7 +82,7 @@ def osc_main_sync_loop
 
   end
 end
-osc_main_sync_loop()
+osc_main_sync_loop
 
 # never let this OSC-reading loop die! (or at least, restart it)
 if defined? __add_stop_hook
@@ -92,7 +92,14 @@ if defined? __add_stop_hook
   end
 end
 
+@touchosc_reply_cache = {}
+
 def touchosc_reply(path, label:nil, val:nil) #, formatter=nil)
+
+  # skip unchanged values - save network traffic to TouchOSC
+  return if val == @touchosc_reply_cache[path]
+  @touchosc_reply_cache[path] = val
+
   # path = "/#{page}/#{elem}/#{id}"
   # if elem == 'xy'
   #   # xy control
