@@ -1,11 +1,7 @@
-in_thread do  # MIDI port reset
-  if  __get_midi_ports.include? '<error>'
-    puts "RESETTING MIDI"
-    __midi_system_reset
-  end
-end
+reset_midi
+true_random
 
-use_random_seed Time.now.usec
+run_file '/scratch/midieval-weapons/sonicpi/lib-launchpad-buttons.pi.rb'
 
 run_file '/scratch/midieval-weapons/sonicpi/sampler/keys.pi.rb'
 
@@ -13,7 +9,7 @@ run_file '/scratch/midieval-weapons/sonicpi/lib-touchosc.pi.rb'
 use_osc '192.168.1.6', 9999
 
 ##| sams = load_samples ""
-sams  = load_samples '~/Documents/audio/', /gtr-(?!.*slsess).*/
+sams  = load_samples '/Users/textchimp/Documents/audio/', /gtr-(?!.*slsess).*/
 @sams = sams
 
 drums = load_samples "/Users/textchimp/Documents/hydrogen/drumkits/**"
@@ -43,7 +39,7 @@ end
 
 sl = 0
 
-def play_sample(sam:, slices:, slice:, acc:, beats:)
+def play_sample(sam, slices:, slice:, acc:, beats:)
   sample sam,
     slice: slice, #c(20, 30), #slice,
     num_slices: slices,
@@ -89,7 +85,7 @@ with_fx :reverb do |rvb|
       s = o('/1/rotary/1', 'sam', map: sams)
       # s = @sams[ o('/1/rotary/1', 'sam', range:@sams.length).to_i ]
 
-      # play_sample sam: s, slices: slices, slice: slice, acc: acc, beats: beats
+      play_sample s, slices: slices, slice: slice, acc: acc, beats: beats
 
       ##| puts (get(:ytouch).to_f / 127.0)
       # cl get(:point)
@@ -100,11 +96,11 @@ end
 
 
 
+# live_loop :ryddm do
+#   sync :sam
+#   sample drums[450], on: spread(seq(4,5),14).tick, lpf: 130
+# end
 
-live_loop :ryddm do
-  sync :sam
-  # sample drums[450], on: spread(seq(4,5),14).tick, lpf: 130
-end
 
 live_loop :midi do
   chan, val, other = sync '/midi/spd-1p/*/*/*_change'
@@ -119,7 +115,7 @@ end
 live_loop :midi_note do
   chan, val = sync "/midi/spd-1p/*/*/note_on"
   next if val == 0
-  @drum_vels[ get(:index) ] = val
+  @drum_vels[ g(:index) ] = val
 
   sammy val
 
@@ -132,30 +128,101 @@ end
 #   cl "LAM OFF"
 # end
 
-kbd :cc do |k, _, v|
-  cl 'cc', k
-  label = case k
-    when 7      then :m
-    when 21..28 then "k#{k-20}"
-    when 41..48 then "s#{k-40}"
-    else "cc#{k}"
+# kbd :cc do |k, _, v|
+#   cl 'cc', k
+#   label = case k
+#     when 7      then :m
+#     when 21..28 then "k#{k-20}"
+#     when 41..48 then "s#{k-40}"
+#     else "cc#{k}"
+#   end
+#   set( label, v / 127.0 )
+# end
+
+kbd :cc do |k, n, v|
+  # next unless k == 64
+  # if v > 0
+  #   midi 105,
+  # end
+  case k
+  when 64
+    cl "hold".send(v > 0 ? :green : :red)
+  when  7
+    # master slider
+    s = @sams[ (get(:master, 0.5)*@sams.length).to_i ]
+    cl g(:m), s.path.sub('/Users/textchimp/Documents/audio/', '')
   end
-  set( label, v / 127.0 )
 end
 
-kbd :on do |k, n, v|
-  # cl "Lambda here! #{[k, n, v]}, #{get :slices}"
+kbd :note_on do |k, n, v|
   # cl 'slices', slices
-  sam = @sams[ (get(:m)*@sams.length).to_i ]
-  in_thread do
-    loops = (get(:s1) * 20).to_i
-    wrap = (get(:s2) * 20).to_i
-    cl loops, wrap
-    loop do
-      slices = 1 + get(:k8) * 100
-      sample sam, num_slices: slices, slice: (slices*n).to_i, attack: 0.01
-      sleep sample_duration(sam)/slices
-      break unless key_held( k )
+  sam = @sams[ (get(:master, 0.5)*@sams.length).to_i ]
+
+  sam = '/Users/textchimp/Downloads/watts1.wav'
+
+  # cl g(:m), sam.path.sub('/Users/textchimp/Documents/audio/', '')
+
+  # new syntax for tilde: 'proportional to' or mapped to array from 0..1
+  #sam = @sams ~ g(:m)  ~= ?? ~~??
+
+  with_fx :reverb do |rvb|
+    with_fx :distortion do |dist|
+      with_fx :flanger do |fla|
+        with_fx :lpf, slide: 0.1 do |lpf|
+
+    in_thread do
+      loops = (g(:s1) * 20).to_i
+      wrap = (g(:s2) * 20).to_i
+
+      # set :rate, g(:k7, 1)  # to remember across iterations
+
+      # cl "pb", get(:pb, 0.5), get(:pb, 0.5)*2 - 1
+      # use (remember) same initial pan for all iterations
+      pan = get(:pb, 0.5) * 2 - 1
+
+      loop do
+
+        control dist, mix: get(:s1, 0)
+        control rvb, mix: get(:s2, 0)
+        control fla, mix: get(:s3, 0)
+        control lpf, cutoff: 10 + (1- get(:s4, 0)) * 130
+
+        slices = 1 + get(:k8, 0) * 100
+        sample sam,
+          amp: v * 2,
+          num_slices: slices,
+          slice: (slices*n).to_i,
+          # onset: (slices*n).to_i,
+          attack: 0.01,
+          # norm: 1,
+          # decay:0.9,
+          pan: pan,
+          rate: get(:k7,1) #get(:rate)
+
+        len = sample_duration(sam)/slices
+        sleep len + g(:k6, 0) * len*2
+
+        break unless g(:ped) > 0 || key_held( k )
+      end
     end
+
+  end #sfx
   end
+  end
+  end
+
+end
+
+osc_handler '/1/push/1' do |p, v|
+  cl "HANDLED! ", p, v
+  __stop_other_jobs
+end
+
+osc_handler '/1/push/' do |p, v, rest|
+  cl "HANDLED! ", p, v, rest
+end
+
+osc_handler '/1/toggle/11' do |p, v|
+  cl "go!".green
+  __rerun_last_osc_code
 end
