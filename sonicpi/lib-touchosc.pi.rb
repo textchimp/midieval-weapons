@@ -7,11 +7,13 @@ unless defined? @touchosc_map
   @touchosc_map = {}
 end
 
-@def = {
-  '/1/fader/spread1beat' => 5,
-  '/1/fader/2amp' => 120,
-  '/1/fader/2amp' => 120,
-  '/1/fader/1' => 0.5,
+@touchosc_defaults = {
+  # '/1/fader/spread1beat' => 5,
+  # '/1/fader/2amp' => 120,
+  # '/1/fader/2amp' => 120,
+  # '/1/fader/1' => 0.5,
+  # '/1/rotary/1' => 1.0,
+  # '/1/fader/1' => 1.0,
   # '/1/fader/2' => 0.5,
   # '/1/fader/3' => 0.5,
   # '/1/fader/4' => 0.0,
@@ -60,26 +62,8 @@ def osc_main_sync_loop
   live_loop :osc do
     path, vals = sync "/osc/1/**", path:true   # wait for OSC message
     path = path.split("/osc")[1]  # chop off /osc head
-
-    handle_touchosc_event(path, vals)
-
-    @touchosc_map[path] = vals    # save to map (TODO: need this still? if not comparing for update)
-    # cl path, vals
-    # cl @touchosc_map
-    # if path == '/1/fader/spread1beat'
-    #   @beats = o('/1/fader/spread1beat', 'spread acc', 1, 16, &:to_i)
-    # elsif path == '/1/fader/spread1acc'
-    #   @acc = o('/1/fader/spread1acc', 'spread acc', 1, 16, &:to_i)
-    # elsif path == '/1/fader/2'
-    #   @bpm = o('/1/fader/2', nil, 20, 160)
-    # elsif path == '/1/fader/3'
-    #   @rnd = o('/1/fader/3', nil, 0, 1)
-    # elsif path == '/1/rotary/1'
-    #   @scl = o('/1/rotary/1', nil, 0, scale_names.length){ |v| scale_names[v.to_i] }
-    # elsif path == '/1/rotary/2'
-    #   @drum = o('/1/rotary/2', nil, 0, sample_names(:bd).length){ |v| sample_names(:bd)[v.to_i] }
-    # end
-
+    handle_touchosc_event( path, vals )
+    @touchosc_map[path] = vals
   end
 end
 osc_main_sync_loop
@@ -87,19 +71,23 @@ osc_main_sync_loop
 # never let this OSC-reading loop die! (or at least, restart it)
 if defined? __add_stop_hook
   __add_stop_hook do
-    cl "OSC keep-alive stop hook running"
+    # cl "OSC keep-alive stop hook running"
     osc_main_sync_loop
   end
 end
+# __clear_stop_hooks
 
 @touchosc_reply_cache = {}
 
 def touchosc_reply(path, label:nil, val:nil) #, formatter=nil)
 
   # skip unchanged values - save network traffic to TouchOSC
-  return if val == @touchosc_reply_cache[path]
+  # (but always send all values on first iteration of a loop (look))
+  return if val == @touchosc_reply_cache[path] && look > 0
+
   @touchosc_reply_cache[path] = val
 
+  comment do
   # path = "/#{page}/#{elem}/#{id}"
   # if elem == 'xy'
   #   # xy control
@@ -113,27 +101,34 @@ def touchosc_reply(path, label:nil, val:nil) #, formatter=nil)
   #   osc path, label # + ': ' + val.to_s])
   #   return
   # end
+  end
 
   if val
     osc path + "/val", val
   end
 
   if label
-    # path = "/#{page}/#{elem}/#{id}/name"
-    osc path + "/name", label  # builtin from sonic pi v3
-
+    osc path + "/name", label   # path = "/#{page}/#{elem}/#{id}/name"
 
     if label.include? '%s'
-      osc path + "/label", label.sub('%s', val.to_s)  # builtin from sonic pi v3
+      osc path + "/label", label.sub('%s', val.to_s)
     end
-
   end
 
 end
 
+def osc_get_last_value(path, initial)
+  if @touchosc_map[path]
+    osc path, @touchosc_map[path] if look == 0
+    @touchosc_map[path] # default to last received value if set
+  else
+    ret = initial || @touchosc_defaults[path] || 0
+    osc path, ret    # also sets last value to TouchOSC if not initialised
+    ret
+  end
+end
 
-# TODO: same old initialisation issues: need to return default value (0? 1?) for nil values, before first reading
-def o(id, label, min_or_max=nil, max=nil, range:1.0, round:2, map:[])
+def o(id, label, min_or_max=nil, max=nil, round:2, map:[], i:false, int:false, first:nil)
 
   if id.is_a? Numeric
     # shorthand: integer first arg converted to '/1/fader/INT'
@@ -145,9 +140,23 @@ def o(id, label, min_or_max=nil, max=nil, range:1.0, round:2, map:[])
   _, page, *elem = path.split '/'
 
 
-  # handle optional arguments
-  if not min_or_max and not max
+  if min_or_max || max
 
+    # check if one or both of min/max values given:
+    # - if just one arg, it's the max, min is 0
+    # - if both given, use both as min..max
+    if max
+      min = min_or_max.to_f
+      max = max.to_f
+    else
+      min = 0
+      max = min_or_max.to_f
+    end
+
+    val = min + osc_get_last_value(path, first) * (max - min).to_f
+    val_print = val.round( round )
+
+  else
     # NO ARGS = treat as either button, or default range
 
     if elem == 'multitoggle'
@@ -157,39 +166,27 @@ def o(id, label, min_or_max=nil, max=nil, range:1.0, round:2, map:[])
       # button type , true/false
       val = @touchosc_map[path].to_f > 0
       puts "TOGGLE", val
+      touchosc_reply(path, label:label)
       return val
     else
-      # treat as default range 0-1, i.e. do nothing with value provided by TouchOSC
-      val = @touchosc_map[path] || @def[path] || 0.5
-      puts "DEFAULT 0-1", val
+      # Standard control element, no min/max given
+      # Treat as default range 0-1, i.e. use value provided by TouchOSC
+      val = osc_get_last_value(path, first)
 
-      # cl "val current (#{path})", val
-      val *= range   # handle nil initial values
-    end
+      # Mapping of normalised value to array elements
+      if map.any?
+        # NOTE: 'first:' arg when used with map: will be treated
+        # as normalised value to plug in to map_list below, not final value!
+        val, index = map_list(val, map)
+        val_print = val.to_s rescue index
+      else
+        # only round off non array-mapped values
+        val_print = val.round( round )
+      end
 
-  else
+    end # normal element
 
-    ##| use range to calculate value
-    if max
-      min = min_or_max.to_f
-      max = max.to_f
-    else
-      min = 0
-      max = min_or_max.to_f
-    end
-    val = (@touchosc_map[path].to_f || 0.5) * (max - min).to_f + min
-
-  end
-  # cl val
-  val_print = val.round( round )
-
-  # TODO: fix these conditions, get rid of min_or_max & use keyword args
-  if map.any?
-    # cl "MAPPIN", @touchosc_map[path].to_f, map
-    val, index = map_list(@touchosc_map[path].to_f, map)
-    val_print = val.to_s rescue index
-  end
-
+  end  # no min/max args
 
   comment do
     # DON'T BOTHER WITH THE FOLLOWING WHEN USING sync() for OSC:
@@ -223,14 +220,27 @@ def o(id, label, min_or_max=nil, max=nil, range:1.0, round:2, map:[])
     val_print = yield val
   end
 
+  if i || int
+    # convert to integer
+    val = val.to_i
+    val_print = val_print.to_i
+  end
+
+  # send label/value data back to TouchOSC if there's been a change
   touchosc_reply(path, label:label, val:val_print)
 
   val
 end
 
-# alias_method :o, :osc
-
 def map_list(norm, list)
-  ind = ((norm-0.001).abs * list.length).floor
-  [ list.fetch(ind), ind ]
+  if norm >= 1
+    [list.last, list.length-1]
+  elsif norm < 0
+    [list.first, 0]
+  else
+    ind = (list.length * norm).to_i
+    [ list[ind], ind  ]
+  end
 end
+
+cl "TouchOSC lib: loaded"
