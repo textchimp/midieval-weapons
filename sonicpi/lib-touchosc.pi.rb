@@ -8,16 +8,9 @@ unless defined? @touchosc_map
 end
 
 @touchosc_defaults = {
-  # '/1/fader/spread1beat' => 5,
-  # '/1/fader/2amp' => 120,
-  # '/1/fader/2amp' => 120,
   # '/1/fader/1' => 0.5,
   # '/1/rotary/1' => 1.0,
   # '/1/fader/1' => 1.0,
-  # '/1/fader/2' => 0.5,
-  # '/1/fader/3' => 0.5,
-  # '/1/fader/4' => 0.0,
-  # '/1/rotary/5' => 1
 }
 
 @touchosc_handlers = {}
@@ -159,13 +152,12 @@ def o(id, label, min_or_max=nil, max=nil, round:2, map:[], i:false, int:false, f
   else
     # NO ARGS = treat as either button, or default range
 
-    if elem == 'multitoggle'
+    if elem.first == 'multitoggle'
       val = @touchosc_notegrid[y.to_i][x.to_i]
       return val
-    elsif elem == 'toggle'
+    elsif elem.first == 'toggle'
       # button type , true/false
-      val = @touchosc_map[path].to_f > 0
-      puts "TOGGLE", val
+      val = osc_get_last_value(path, first).to_f > 0
       touchosc_reply(path, label:label)
       return val
     else
@@ -188,34 +180,6 @@ def o(id, label, min_or_max=nil, max=nil, round:2, map:[], i:false, int:false, f
 
   end  # no min/max args
 
-  comment do
-    # DON'T BOTHER WITH THE FOLLOWING WHEN USING sync() for OSC:
-    # use a hash to store values and only send update if value changed;
-    # should save osc network traffic on updates which would otherwise
-    # be sent on every sonic pi loop iteration
-    # if (not @touchosc_update.key? path) or val != @touchosc_update[path][:val]
-    #
-    #   # cl "UPDATE send:", path, val, @touchosc_update
-    #
-    #   val_reply = val   # use new var, in case original val is changed by block
-    #
-    #   if block_given?
-    #     # allow a block to be given which can pre-format value, ie lookup in array/hash
-    #     val_reply = yield val
-    #   elsif @touchosc_reply_format.key? path
-    #     # use predefined format lambda from hash
-    #     val_reply = @touchosc_reply_format[path].call( val )
-    #   else
-    #     val_reply = val_reply.round(3) if val_reply.is_a? Numeric  # default formatting: round num to 3 decimal places
-    #   end
-    #
-    #   @touchosc_update[path]= { val: val, val_display: val_reply, val_osc: @touchosc_map[path] }
-    #
-    #   cl page, elem, id+coord, label, val_reply
-    #   touchosc_reply(path, label:label, val:val_reply) #, formatter)
-    # end
-  end
-
   if block_given?
     val_print = yield val
   end
@@ -231,6 +195,19 @@ def o(id, label, min_or_max=nil, max=nil, round:2, map:[], i:false, int:false, f
 
   val
 end
+
+@touchosc_last_ping = Time.now
+@touchosc_alive = true
+live_loop :ping do
+  sync '/osc/ping'
+  @touchosc_last_ping = Time.now
+  @touchosc_alive = true
+end
+
+def touchosc_alive?
+  (Time.now - @touchosc_last_ping) < 5
+end
+
 
 def map_list(norm, list)
   if norm >= 1
