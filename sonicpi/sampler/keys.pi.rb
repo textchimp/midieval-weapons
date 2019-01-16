@@ -1,10 +1,37 @@
+
+# with_fx :ixi_techno do |ixi|
+with_fx :level, amp: 1 do |amp|
+with_fx :lpf, slide: 0.1 do |lpf|
+with_fx :distortion, mix: 0 do |dist|
+with_fx :reverb, mix: 0 do |rvb|
+with_fx :flanger, mix: 0 do |fla|
+
 live_loop :launchkey_events do
+
+  # fx
+  # control ixi, phase: get(:mod,0) * 4
+  # control amp, amp: get(:mod,0)*2
+  control amp, amp: key_fx(:amp) * 4
+  control rvb, mix: key_fx(:reverb)
+  control fla, mix: key_fx(:flanger)
+  control lpf, cutoff: 10 + (1.0 - key_fx(:lpf)) * 130
+  control dist,
+    mix: key_fx(:dist_mix),
+    distort: key_fx(:dist_distort) * 0.99
+
   path, key, vel = sync '/midi/launchkey_mk2_49_launchkey_midi/*/*/*', path: true
   handle_launchkey_event(path.split('/').last.to_sym, key, vel)
 end
 
+end # fx
+end
+end
+end
+end
+
 def cc_to_symbol(cc)
   case cc
+    when 1       then :mod
     when 7       then :master
     when 64      then :pedal
     when 21..28  then "k#{cc-20}"
@@ -66,4 +93,16 @@ end
 # block gets args: key, key_normalised, velocity (normalised)
 def kbd(event, &block)
   @launchkey_handlers[ event_aliases(event) ] = block
+end
+
+cl "Launchkey lib: loaded"
+
+@launchkey_fx_controls = {}
+def set_fx_controls(h)
+  @launchkey_fx_controls.merge! h
+  cl h.inspect
+end
+
+def key_fx(key, default=0)
+  get(@launchkey_fx_controls[key], default)
 end
